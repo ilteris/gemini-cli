@@ -80,6 +80,7 @@ export async function executeToolWithHooks(
   const toolInput = (invocation.params || {}) as Record<string, unknown>;
   let inputWasModified = false;
   let modifiedKeys: string[] = [];
+  let beforeHookContext: string | undefined;
 
   // Extract MCP context if this is an MCP tool (only if config is provided)
   const mcpContext = config ? extractMcpContext(invocation, config) : undefined;
@@ -118,6 +119,9 @@ export async function executeToolWithHooks(
         },
       };
     }
+
+    // Capture additionalContext from BeforeTool hook to inject into tool result
+    beforeHookContext = beforeOutput?.getAdditionalContext();
 
     // Check if hook requested to update tool input
     if (beforeOutput instanceof BeforeToolHookOutput) {
@@ -175,6 +179,20 @@ export async function executeToolWithHooks(
         toolResult.llmContent,
         { text: modificationMsg },
       ];
+    }
+  }
+
+  // Append additionalContext from BeforeTool hook (e.g. middleware crash warnings)
+  if (beforeHookContext) {
+    const wrappedContext = `\n\n<hook_context>${beforeHookContext}</hook_context>`;
+    if (typeof toolResult.llmContent === 'string') {
+      toolResult.llmContent += wrappedContext;
+    } else if (Array.isArray(toolResult.llmContent)) {
+      toolResult.llmContent.push({ text: wrappedContext });
+    } else if (toolResult.llmContent) {
+      toolResult.llmContent = [toolResult.llmContent, { text: wrappedContext }];
+    } else {
+      toolResult.llmContent = wrappedContext;
     }
   }
 

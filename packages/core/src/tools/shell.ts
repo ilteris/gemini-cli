@@ -82,6 +82,22 @@ function trimLiveOutputBuffer(output: string): string {
   return output.slice(startIndex);
 }
 
+/// Maximum bytes of shell stdout we ship to the model in a single tool
+/// response. ~100KB ≈ 25K tokens — leaves room for chat history and the
+/// model's reply while still giving the agent enough signal to act. The
+/// full output is still preserved in the user-facing `returnDisplay`.
+const MAX_SHELL_LLM_OUTPUT_BYTES = 100_000;
+
+function clipShellOutputForLLM(output: string): string {
+  const buf = Buffer.from(output, 'utf8');
+  if (buf.length <= MAX_SHELL_LLM_OUTPUT_BYTES) return output;
+  const half = Math.floor(MAX_SHELL_LLM_OUTPUT_BYTES / 2);
+  const head = buf.subarray(0, half).toString('utf8');
+  const tail = buf.subarray(buf.length - half).toString('utf8');
+  const omitted = buf.length - MAX_SHELL_LLM_OUTPUT_BYTES;
+  return `${head}\n\n... [TRUNCATED ${omitted.toLocaleString()} bytes of output — re-run with a narrower command if you need more] ...\n\n${tail}`;
+}
+
 export interface ShellToolParams {
   command: string;
   description?: string;
@@ -793,7 +809,14 @@ export class ShellToolInvocation extends BaseToolInvocation<
       } else {
         // Create a formatted error string for display, replacing the wrapper command
         // with the user-facing command.
-        const llmContentParts = [`Output: ${result.output || '(empty)'}`];
+        // Cap shell stdout shipped to the model so an unbounded command (e.g.
+        // `grep -r foo .` across a large tree) cannot blow past the model's
+        // context window. The full output is still surfaced verbatim via
+        // `returnDisplay` below — only the LLM-facing copy is clipped. Head
+        // + tail keeps most of the diagnostic signal; the model can re-issue
+        // a narrower command if it needs more.
+        const llmOutput = clipShellOutputForLLM(result.output);
+        const llmContentParts = [`Output: ${llmOutput || '(empty)'}`];
 
         if (result.error) {
           const finalError = result.error.message.replaceAll(

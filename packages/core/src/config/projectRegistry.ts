@@ -94,6 +94,14 @@ export class ProjectRegistry {
 
   private normalizePath(projectPath: string): string {
     let resolved = path.resolve(projectPath);
+    try {
+      // SOUL-SOUL-017: Resolve symlinks to ensure consistent matching even if accessed via different paths.
+      // This matches the hardening in Soul-Desktop's registry resolution.
+      resolved = fs.realpathSync(resolved);
+    } catch {
+      // If path doesn't exist (e.g. newly created project or deleted during execution),
+      // path.resolve is the best we can do.
+    }
     if (os.platform() === 'win32') {
       resolved = resolved.toLowerCase();
     }
@@ -305,6 +313,14 @@ export class ProjectRegistry {
     projectPath: string,
     existingMappings: Record<string, string>,
   ): Promise<string> {
+    // SOUL-SOUL-017: Pre-check for any existing folder claiming this path
+    // to avoid creating soul-1, soul-2 if a marker already exists but
+    // is not in the registry mapping.
+    const existing = await this.findExistingSlugForPath(projectPath);
+    if (existing) {
+      return existing;
+    }
+
     const baseName = path.basename(projectPath) || 'project';
     const slug = this.slugify(baseName);
 
@@ -315,13 +331,9 @@ export class ProjectRegistry {
       const candidate = counter === 0 ? slug : `${slug}-${counter}`;
       counter++;
 
-      // Check if taken in registry
-      if (existingIds.has(candidate)) {
-        continue;
-      }
-
       // Check if taken on disk
       let diskCollision = false;
+      let diskMatch = false;
       for (const baseDir of this.baseDirs) {
         const markerPath = path.join(baseDir, candidate, PROJECT_ROOT_FILE);
         if (fs.existsSync(markerPath)) {
@@ -329,7 +341,10 @@ export class ProjectRegistry {
             const owner = (
               await fs.promises.readFile(markerPath, 'utf8')
             ).trim();
-            if (this.normalizePath(owner) !== this.normalizePath(projectPath)) {
+            if (this.normalizePath(owner) === this.normalizePath(projectPath)) {
+              diskMatch = true;
+              break;
+            } else {
               diskCollision = true;
               break;
             }
@@ -341,7 +356,18 @@ export class ProjectRegistry {
         }
       }
 
+      if (diskMatch) {
+        // We found an existing folder for this project. Adopt it even if it's
+        // "taken" in the registry mapping (the registry is likely out of sync).
+        return candidate;
+      }
+
       if (diskCollision) {
+        continue;
+      }
+
+      // Check if taken in registry
+      if (existingIds.has(candidate)) {
         continue;
       }
 

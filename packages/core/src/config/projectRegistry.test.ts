@@ -435,4 +435,58 @@ describe('ProjectRegistry', () => {
     expect(data.projects[normalizePath(projectPath)]).toBe('my-project');
     expect(Object.values(data.projects)).not.toContain('../../etc/passwd');
   });
+
+  it('resolves symlinks in normalizePath (SOUL-SOUL-017)', async () => {
+    const registry = new ProjectRegistry(registryPath);
+    await registry.initialize();
+
+    const realPath = path.join(tempDir, 'real-project');
+    fs.mkdirSync(realPath);
+    const symlinkPath = path.join(tempDir, 'symlink-project');
+    fs.symlinkSync(realPath, symlinkPath);
+
+    const id1 = await registry.getShortId(realPath);
+    const id2 = await registry.getShortId(symlinkPath);
+
+    expect(id1).toBe('real-project');
+    expect(id2).toBe('real-project');
+  });
+
+  it('adopts existing slug from disk even if registry says otherwise (SOUL-SOUL-017)', async () => {
+    const projectPath = normalizePath(path.join(tempDir, 'project-x'));
+    const slug = 'custom-slug';
+
+    // 1. Disk has 'custom-slug' claiming 'project-x'
+    const slugDir = path.join(baseDir1, slug);
+    fs.mkdirSync(slugDir, { recursive: true });
+    fs.writeFileSync(path.join(slugDir, '.project_root'), projectPath);
+
+    // 2. Registry is empty
+    const registry = new ProjectRegistry(registryPath, [baseDir1]);
+    await registry.initialize();
+
+    // 3. getShortId should find 'custom-slug' from disk
+    const id = await registry.getShortId(projectPath);
+    expect(id).toBe(slug);
+
+    // 4. Now simulate registry collision: another project takes 'custom-slug' in projects.json
+    // but our disk marker still exists.
+    const projectY = normalizePath(path.join(tempDir, 'project-y'));
+    fs.writeFileSync(
+      registryPath,
+      JSON.stringify({
+        projects: {
+          [projectY]: slug,
+        },
+      }),
+    );
+
+    // Re-init registry
+    const registry2 = new ProjectRegistry(registryPath, [baseDir1]);
+    await registry2.initialize();
+
+    // 5. getShortId for project-x should STILL get 'custom-slug' because disk wins
+    const id2 = await registry2.getShortId(projectPath);
+    expect(id2).toBe(slug);
+  });
 });

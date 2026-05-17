@@ -212,13 +212,44 @@ export class ProjectRegistry {
       // If we have a mapping, verify it against the folders on disk
       if (shortId) {
         if (await this.verifySlugOwnership(shortId, normalizedPath)) {
-          // HEAL: If it passed verification but markers are missing (e.g. new base dir or deleted marker), recreate them.
-          await this.ensureOwnershipMarkers(shortId, normalizedPath);
-          return shortId;
+          // SOUL-SOUL-024: Even when the mapped slug verifies, prefer the
+          // canonical bare slug if it ALSO has a valid marker for the same
+          // path. This closes the self-perpetuating bad-mapping vector:
+          // once projects.json ends up pointing at foo-1 (whose marker
+          // validly resolves to /path/foo), verification alone would
+          // return "foo-1" forever even though "foo" also has a valid
+          // marker for the same path. With this hierarchy fix, we
+          // detect the divergence and return the canonical slug directly.
+          // (We cannot fall through to findExistingSlugForPath because its
+          // readdir order is non-deterministic and could re-elect shortId.)
+          const baseName = path.basename(normalizedPath) || 'project';
+          const canonicalSlug = this.slugify(baseName);
+          const hasCanonicalMarker = this.baseDirs.some((dir) =>
+            fs.existsSync(path.join(dir, canonicalSlug, PROJECT_ROOT_FILE)),
+          );
+          if (
+            canonicalSlug !== shortId &&
+            hasCanonicalMarker &&
+            (await this.verifySlugOwnership(canonicalSlug, normalizedPath))
+          ) {
+            // Both the mapped slug and the canonical slug claim this path.
+            // Prefer the canonical. Rewrite the mapping directly — we can't
+            // fall through to findExistingSlugForPath because its readdir
+            // order is non-deterministic and could re-elect shortId.
+            currentData.projects[normalizedPath] = canonicalSlug;
+            await this.ensureOwnershipMarkers(canonicalSlug, normalizedPath);
+            await this.save(currentData);
+            return canonicalSlug;
+          } else {
+            // HEAL: If it passed verification but markers are missing (e.g. new base dir or deleted marker), recreate them.
+            await this.ensureOwnershipMarkers(shortId, normalizedPath);
+            return shortId;
+          }
+        } else {
+          // If verification fails, it means the registry is out of sync or someone else took it.
+          // We'll remove the mapping and find/generate a new one.
+          delete currentData.projects[normalizedPath];
         }
-        // If verification fails, it means the registry is out of sync or someone else took it.
-        // We'll remove the mapping and find/generate a new one.
-        delete currentData.projects[normalizedPath];
       }
 
       // Try to find if this project already has folders assigned that we didn't know about

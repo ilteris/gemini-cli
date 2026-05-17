@@ -489,4 +489,38 @@ describe('ProjectRegistry', () => {
     const id2 = await registry2.getShortId(projectPath);
     expect(id2).toBe(slug);
   });
+
+  it('prefers canonical bare slug over -N siblings when both have valid markers (SOUL-SOUL-024)', async () => {
+    const projectPath = normalizePath(path.join(tempDir, 'foo'));
+    const canonicalSlug = 'foo';
+    const siblingSlug = 'foo-1';
+
+    // 1. Both foo and foo-1 have markers for the same projectPath
+    for (const slug of [canonicalSlug, siblingSlug]) {
+      const slugDir = path.join(baseDir1, slug);
+      fs.mkdirSync(slugDir, { recursive: true });
+      fs.writeFileSync(path.join(slugDir, '.project_root'), projectPath);
+    }
+
+    // 2. Registry is pre-populated with the sibling mapping
+    fs.writeFileSync(
+      registryPath,
+      JSON.stringify({
+        projects: {
+          [projectPath]: siblingSlug,
+        },
+      }),
+    );
+
+    const registry = new ProjectRegistry(registryPath, [baseDir1]);
+    await registry.initialize();
+
+    // 3. getShortId should detect the canonical marker and switch
+    const id = await registry.getShortId(projectPath);
+    expect(id).toBe(canonicalSlug);
+
+    // 4. Mapping should be rewritten in the registry
+    const data = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+    expect(data.projects[projectPath]).toBe(canonicalSlug);
+  });
 });

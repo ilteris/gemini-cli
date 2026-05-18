@@ -128,6 +128,23 @@ export interface MetadataUpdateRecord {
   $set: Partial<ConversationRecord>;
 }
 
+/**
+ * Per-toolCall delta record. Emitted instead of re-serializing the entire
+ * parent message every time a tool call's result/status changes. Without
+ * this, a `gemini` message holding N tool calls with cumulative result
+ * size S grew the chat file by S bytes on every later tool-result arrival
+ * — observed in the wild as a 2.17 GB chat file for a 13-turn session
+ * because one tool returned ~36 MB and every subsequent tool update
+ * re-embedded it. The reader applies these by id-merging into the parent
+ * message's toolCalls list.
+ */
+export interface ToolCallUpdateRecord {
+  $updateToolCall: {
+    messageId: string;
+    toolCall: ToolCallRecord;
+  };
+}
+
 export interface PartialMetadataRecord {
   sessionId: string;
   projectHash: string;

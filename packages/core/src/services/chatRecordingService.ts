@@ -35,6 +35,7 @@ import {
   type RewindRecord,
   type MetadataUpdateRecord,
   type PartialMetadataRecord,
+  type ToolCallUpdateRecord,
 } from './chatRecordingTypes.js';
 export * from './chatRecordingTypes.js';
 
@@ -83,6 +84,12 @@ function isMetadataUpdateRecord(
   record: unknown,
 ): record is MetadataUpdateRecord {
   return isObjectProperty(record, '$set');
+}
+
+function isToolCallUpdateRecord(
+  record: unknown,
+): record is ToolCallUpdateRecord {
+  return isObjectProperty(record, '$updateToolCall');
 }
 
 function isPartialMetadataRecord(
@@ -171,6 +178,33 @@ export async function loadConversationRecord(
             } else {
               messagesMap.clear();
             }
+          }
+        } else if (isToolCallUpdateRecord(record)) {
+          // Per-toolCall delta. Apply by id-merging into the parent
+          // message's toolCalls list. If the parent message isn't in
+          // messagesMap yet (out-of-order replay) we drop the delta —
+          // that shouldn't happen on the write side, where the parent
+          // is always recorded before any update against it.
+          if (!options?.metadataOnly) {
+            const { messageId, toolCall } = record.$updateToolCall;
+            const target = messagesMap.get(messageId);
+            if (target && target.type === 'gemini') {
+              if (!target.toolCalls) target.toolCalls = [];
+              const idx = target.toolCalls.findIndex(
+                (tc) => tc.id === toolCall.id,
+              );
+              if (idx >= 0) {
+                target.toolCalls[idx] = {
+                  ...target.toolCalls[idx],
+                  ...toolCall,
+                };
+              } else {
+                target.toolCalls.push(toolCall);
+              }
+            }
+          }
+          if (isTrackingMemoryScratchpadFreshness) {
+            memoryScratchpadIsStale = true;
           }
         } else if (isMessageRecord(record)) {
           if (isTrackingMemoryScratchpadFreshness) {
@@ -645,18 +679,35 @@ export class ChatRecordingService {
           const index = updatedToolCalls.findIndex(
             (tc) => tc.id === toolCall.id,
           );
+          const merged =
+            index !== -1
+              ? { ...updatedToolCalls[index], ...toolCall }
+              : toolCall;
           if (index !== -1) {
-            updatedToolCalls[index] = {
-              ...updatedToolCalls[index],
-              ...toolCall,
-            };
+            updatedToolCalls[index] = merged;
           } else {
-            updatedToolCalls.push(toolCall);
+            updatedToolCalls.push(merged);
           }
+          // Emit a per-toolCall delta instead of re-writing the entire
+          // parent message. The old `pushMessage(lastMsg)` path appended
+          // the FULL toolCalls array (with every prior result inlined) on
+          // every update — turning a 13-turn session with one 36 MB tool
+          // result into a 2.17 GB chat file. The reader applies these by
+          // id-merging into the parent message's toolCalls list, same
+          // pattern messagesMap uses for whole-message updates.
+          this.appendRecord({
+            $updateToolCall: {
+              messageId: lastMsg.id,
+              toolCall: merged,
+            },
+          });
         }
 
         lastMsg.toolCalls = updatedToolCalls;
-        this.pushMessage(lastMsg);
+        // Note: in-memory cache stays consistent because `lastMsg` is the
+        // same reference held by `cachedConversation.messages`. We
+        // intentionally do NOT call pushMessage here — that would append
+        // the entire message again, re-introducing the duplication bug.
       }
     } catch (error) {
       debugLogger.error(

@@ -15,7 +15,12 @@ import {
 } from '../tools/tools.js';
 import { type AgentLoopContext } from '../config/agent-loop-context.js';
 import type { MessageBus } from '../confirmation-bus/message-bus.js';
-import type { AgentDefinition, AgentInputs } from './types.js';
+import type {
+  AgentDefinition,
+  AgentInputs,
+  SubagentProgress,
+} from './types.js';
+import { SubagentState } from './types.js';
 import { LocalSubagentInvocation } from './local-invocation.js';
 import { RemoteAgentInvocation } from './remote-invocation.js';
 import { LocalSessionInvocation } from './local-session-invocation.js';
@@ -32,6 +37,46 @@ import {
   GEN_AI_AGENT_NAME,
 } from '../telemetry/constants.js';
 import { AGENT_TOOL_NAME } from '../tools/tool-names.js';
+import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { MessageBusType } from '../confirmation-bus/types.js';
+import { randomUUID } from 'node:crypto';
+
+const SOUL_DELEGATED_AGENT_NAMES = new Set([
+  'adversarial_judge',
+  'cloud_architect',
+  'code_archaeologist',
+  'creative_technologist',
+  'information_retriever',
+  'monorepo_architect',
+  'narrative_taxonomist',
+  'product_shaper',
+  'registry_guardian',
+  'systems_architect',
+  'terrain_mapper',
+  'visual_auditor',
+]);
+
+function isSoulDelegatedAgent(definition: AgentDefinition): boolean {
+  if (process.env['SOUL_DELEGATE_GEMINI_NATIVE']?.toLowerCase() === 'false') {
+    return false;
+  }
+
+  if (!SOUL_DELEGATED_AGENT_NAMES.has(definition.name)) {
+    return false;
+  }
+
+  const soulAgentDir = path.join(
+    os.homedir(),
+    'dotfiles',
+    'soul',
+    'agents',
+    definition.name,
+  );
+  return fs.existsSync(soulAgentDir);
+}
 
 /**
  * A unified tool for invoking subagents.
@@ -124,11 +169,204 @@ export class AgentTool extends BaseDeclarativeTool<
   }
 }
 
+class SoulDelegateInvocation extends BaseToolInvocation<
+  AgentInputs,
+  ToolResult
+> {
+  parentToolCallId?: string;
+
+  constructor(
+    private readonly definition: AgentDefinition,
+    private readonly prompt: string,
+    private readonly context: AgentLoopContext,
+    messageBus: MessageBus,
+    _toolName?: string,
+    _toolDisplayName?: string,
+  ) {
+    super(
+      { prompt },
+      messageBus,
+      _toolName ?? AGENT_TOOL_NAME,
+      _toolDisplayName ?? `Invoke ${definition.displayName ?? definition.name}`,
+    );
+  }
+
+  getDescription(): string {
+    return `Delegating to agent '${this.definition.name}'`;
+  }
+
+  async execute(options: ExecuteOptions): Promise<ToolResult> {
+    const { abortSignal: signal, updateOutput } = options;
+    const activityId = randomUUID();
+    const callId = this.parentToolCallId ?? randomUUID();
+    const project = process.env['SOUL_PROJECT'] || 'global';
+    const args = [
+      'delegate',
+      this.definition.name,
+      this.prompt,
+      '--project',
+      project,
+      '--provider',
+      'gemini',
+      '--mode',
+      'sync',
+      '--call-id',
+      callId,
+    ];
+
+    const progress = (
+      state: SubagentState,
+      content: string,
+      result?: string,
+    ): SubagentProgress => ({
+      isSubagentProgress: true,
+      agentName: this.definition.name,
+      recentActivity: [
+        {
+          id: activityId,
+          type: 'thought',
+          content,
+          status: state,
+        },
+      ],
+      state,
+      result,
+    });
+
+    const publish = (state: SubagentState, content: string): void => {
+      void this.messageBus.publish({
+        type: MessageBusType.SUBAGENT_ACTIVITY,
+        subagentName: this.definition.displayName ?? this.definition.name,
+        parentToolCallId: callId,
+        activity: {
+          id: activityId,
+          type: 'thought',
+          content,
+          status: state,
+        },
+      });
+    };
+
+    const initial = progress(
+      SubagentState.RUNNING,
+      'Routing Gemini native delegation through soul delegate.',
+    );
+    updateOutput?.(initial);
+    publish(SubagentState.RUNNING, initial.recentActivity[0].content);
+
+    try {
+      const output = await new Promise<string>((resolve, reject) => {
+        const child = spawn('soul', args, {
+          cwd: this.context.config.getProjectRoot(),
+          env: process.env,
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        let stdout = '';
+        let stderr = '';
+
+        const abort = (): void => {
+          child.kill('SIGTERM');
+          const error = new Error('Operation cancelled by user');
+          error.name = 'AbortError';
+          reject(error);
+        };
+
+        if (signal.aborted) {
+          abort();
+          return;
+        }
+
+        signal.addEventListener('abort', abort, { once: true });
+        child.stdout.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString('utf8');
+        });
+        child.stderr.on('data', (chunk: Buffer) => {
+          stderr += chunk.toString('utf8');
+        });
+        child.on('error', (error) => {
+          signal.removeEventListener('abort', abort);
+          reject(error);
+        });
+        child.on('close', (code) => {
+          signal.removeEventListener('abort', abort);
+          if (code === 0) {
+            resolve(stdout);
+            return;
+          }
+          reject(
+            new Error(
+              stderr.trim() || `soul delegate exited with status ${code}`,
+            ),
+          );
+        });
+      });
+
+      let summary = output.trim();
+      let metadata: Record<string, unknown> | undefined;
+      try {
+        const parsed: unknown = JSON.parse(summary);
+        if (isRecord(parsed)) {
+          metadata = parsed;
+          const parsedSummary = parsed['summary'];
+          if (typeof parsedSummary === 'string') {
+            summary = parsedSummary;
+          }
+        }
+      } catch {
+        // Non-JSON output is still a valid delegate result.
+      }
+
+      const completed = progress(
+        SubagentState.COMPLETED,
+        'Soul delegate completed.',
+        summary,
+      );
+      updateOutput?.(completed);
+      publish(SubagentState.COMPLETED, completed.recentActivity[0].content);
+
+      const resultContent = `Subagent '${this.definition.name}' finished via soul delegate.
+Result:
+${summary}`;
+
+      return {
+        llmContent: [{ text: resultContent }],
+        returnDisplay: completed,
+        data: {
+          agentId: callId,
+          soulDelegate: true,
+          ...(metadata ? { metadata } : {}),
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const isAbort = error instanceof Error && error.name === 'AbortError';
+      const state = isAbort ? SubagentState.CANCELLED : SubagentState.ERROR;
+      const failed = progress(state, message);
+      updateOutput?.(failed);
+      publish(state, message);
+
+      if (isAbort) {
+        throw error;
+      }
+
+      return {
+        llmContent: `Subagent '${this.definition.name}' failed via soul delegate. Error: ${message}`,
+        returnDisplay: failed,
+        data: {
+          agentId: callId,
+          soulDelegate: true,
+        },
+      };
+    }
+  }
+}
+
 class DelegateInvocation extends BaseToolInvocation<
   { agent_name: string; prompt: string },
   ToolResult
 > {
   private readonly startIndex: number;
+  parentToolCallId?: string;
 
   constructor(
     params: { agent_name: string; prompt: string },
@@ -160,6 +398,17 @@ class DelegateInvocation extends BaseToolInvocation<
       return new BrowserAgentInvocation(
         this.context,
         agentArgs,
+        this.messageBus,
+        this._toolName,
+        this._toolDisplayName,
+      );
+    }
+
+    if (isSoulDelegatedAgent(this.definition)) {
+      return new SoulDelegateInvocation(
+        this.definition,
+        this.params.prompt,
+        this.context,
         this.messageBus,
         this._toolName,
         this._toolDisplayName,
@@ -211,6 +460,7 @@ class DelegateInvocation extends BaseToolInvocation<
   ): Promise<ToolCallConfirmationDetails | false> {
     const hintedParams = this.withUserHints(this.mappedInputs);
     const invocation = this.buildChildInvocation(hintedParams);
+    Object.assign(invocation, { parentToolCallId: this.parentToolCallId });
     return invocation.shouldConfirmExecute(abortSignal);
   }
 
@@ -218,6 +468,7 @@ class DelegateInvocation extends BaseToolInvocation<
     const { abortSignal: signal, updateOutput } = options;
     const hintedParams = this.withUserHints(this.mappedInputs);
     const invocation = this.buildChildInvocation(hintedParams);
+    Object.assign(invocation, { parentToolCallId: this.parentToolCallId });
 
     return runInDevTraceSpan(
       {

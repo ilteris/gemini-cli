@@ -215,6 +215,12 @@ export interface SubagentActivityMessage {
   type: MessageBusType.SUBAGENT_ACTIVITY;
   subagentName: string;
   activity: SubagentActivityItem;
+  /**
+   * Outer-tool callId of the subagent invocation that is publishing this
+   * activity. ACP clients use this to render the subagent's inner tool calls
+   * and thoughts as a nested timeline under the parent subagent tool row.
+   */
+  parentToolCallId?: string;
 }
 
 export type Message =

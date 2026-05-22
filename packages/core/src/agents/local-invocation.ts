@@ -50,6 +50,13 @@ export class LocalSubagentInvocation extends BaseToolInvocation<
   ToolResult
 > {
   /**
+   * Outer-tool callId set by the ACP layer right before `execute()` runs.
+   * Plumbed onto every SUBAGENT_ACTIVITY bus message so subscribers can nest
+   * the subagent's inner tool calls and thoughts under the parent row.
+   */
+  parentToolCallId?: string;
+
+  /**
    * @param definition The definition object that configures the agent.
    * @param context The agent loop context.
    * @param params The validated input parameters for the agent.
@@ -88,6 +95,7 @@ export class LocalSubagentInvocation extends BaseToolInvocation<
       type: MessageBusType.SUBAGENT_ACTIVITY,
       subagentName: this.definition.displayName ?? this.definition.name,
       activity,
+      parentToolCallId: this.parentToolCallId,
     });
   }
 

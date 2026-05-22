@@ -34,6 +34,9 @@ import {
   isNodeError,
   REFERENCE_CONTENT_START,
   InvalidStreamError,
+  MessageBusType,
+  SubagentState,
+  type SubagentActivityMessage,
 } from '@google/gemini-cli-core';
 import * as acp from '@agentclientprotocol/sdk';
 import type { Part, FunctionCall } from '@google/genai';
@@ -77,7 +80,75 @@ export class Session {
       CoreEvent.ApprovalModeChanged,
       this.handleApprovalModeChanged,
     );
+    this.context.messageBus?.subscribe(
+      MessageBusType.SUBAGENT_ACTIVITY,
+      this.handleSubagentActivity,
+    );
   }
+
+  /**
+   * Forwards subagent inner-tool activity from the message bus to the ACP
+   * client as nested `tool_call` / `tool_call_update` / `agent_thought_chunk`
+   * notifications, tagged with `_meta.parentToolCallId` so the client can
+   * render them as a nested timeline under the parent subagent tool row.
+   */
+  private handleSubagentActivity = (msg: SubagentActivityMessage): void => {
+    const parentToolCallId = msg.parentToolCallId;
+    if (!parentToolCallId) return;
+
+    const meta = { parentToolCallId, subagentName: msg.subagentName };
+    const activity = msg.activity;
+
+    if (activity.type === 'thought') {
+      void this.sendUpdate({
+        sessionUpdate: 'agent_thought_chunk',
+        content: { type: 'text', text: activity.content },
+        _meta: meta,
+      });
+      return;
+    }
+
+    if (activity.type === 'tool_call') {
+      if (activity.status === SubagentState.RUNNING) {
+        let rawInput: Record<string, unknown> | undefined;
+        if (activity.args) {
+          try {
+            const parsedArgs: unknown = JSON.parse(activity.args);
+            rawInput =
+              parsedArgs &&
+              typeof parsedArgs === 'object' &&
+              !Array.isArray(parsedArgs)
+                ? Object.fromEntries(Object.entries(parsedArgs))
+                : undefined;
+          } catch {
+            rawInput = undefined;
+          }
+        }
+        void this.sendUpdate({
+          sessionUpdate: 'tool_call',
+          toolCallId: activity.id,
+          title: activity.displayName ?? activity.content,
+          status: 'in_progress',
+          rawInput,
+          _meta: meta,
+        });
+      } else {
+        // ACP ToolCallStatus is { pending, in_progress, completed, failed }.
+        // Map subagent CANCELLED → failed (no native ACP cancelled state).
+        const status: acp.ToolCallStatus =
+          activity.status === SubagentState.ERROR ||
+          activity.status === SubagentState.CANCELLED
+            ? 'failed'
+            : 'completed';
+        void this.sendUpdate({
+          sessionUpdate: 'tool_call_update',
+          toolCallId: activity.id,
+          status,
+          _meta: meta,
+        });
+      }
+    }
+  };
 
   private handleApprovalModeChanged = (payload: ApprovalModeChangedPayload) => {
     if (payload.sessionId === this.id) {
@@ -95,6 +166,10 @@ export class Session {
     coreEvents.off(
       CoreEvent.ApprovalModeChanged,
       this.handleApprovalModeChanged,
+    );
+    this.context.messageBus?.unsubscribe(
+      MessageBusType.SUBAGENT_ACTIVITY,
+      this.handleSubagentActivity,
     );
   }
 
@@ -608,6 +683,12 @@ export class Session {
 
     try {
       const invocation = tool.build(args);
+
+      // Stamp the outer-tool callId onto the invocation so subagent inner-tool
+      // activity (published via the SUBAGENT_ACTIVITY message bus) can be
+      // routed back to the parent row as nested ACP notifications. Harmless
+      // for non-subagent invocations (field is ignored).
+      Object.assign(invocation, { parentToolCallId: callId });
 
       const displayTitle =
         typeof invocation.getDisplayTitle === 'function'

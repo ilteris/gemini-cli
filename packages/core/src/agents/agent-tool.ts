@@ -256,19 +256,40 @@ class SoulDelegateInvocation extends BaseToolInvocation<
 
     try {
       const output = await new Promise<string>((resolve, reject) => {
+        let elapsedSeconds = 0;
+        let settled = false;
         const child = spawn('soul', args, {
           cwd: this.context.config.getProjectRoot(),
-          env: process.env,
+          env: {
+            ...process.env,
+            SOUL_SESSION_VISIBILITY: 'machine',
+            SOUL_SESSION_KIND: 'subagent',
+          },
           stdio: ['ignore', 'pipe', 'pipe'],
         });
         let stdout = '';
         let stderr = '';
 
+        const progressTimer = setInterval(() => {
+          elapsedSeconds += 15;
+          const content = `Soul delegate still running (${elapsedSeconds}s elapsed).`;
+          updateOutput?.(progress(SubagentState.RUNNING, content));
+          publish(SubagentState.RUNNING, content);
+        }, 15000);
+        const settle = (fn: () => void): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          clearInterval(progressTimer);
+          fn();
+        };
+
         const abort = (): void => {
           child.kill('SIGTERM');
           const error = new Error('Operation cancelled by user');
           error.name = 'AbortError';
-          reject(error);
+          settle(() => reject(error));
         };
 
         if (signal.aborted) {
@@ -285,17 +306,19 @@ class SoulDelegateInvocation extends BaseToolInvocation<
         });
         child.on('error', (error) => {
           signal.removeEventListener('abort', abort);
-          reject(error);
+          settle(() => reject(error));
         });
         child.on('close', (code) => {
           signal.removeEventListener('abort', abort);
           if (code === 0) {
-            resolve(stdout);
+            settle(() => resolve(stdout));
             return;
           }
-          reject(
-            new Error(
-              stderr.trim() || `soul delegate exited with status ${code}`,
+          settle(() =>
+            reject(
+              new Error(
+                stderr.trim() || `soul delegate exited with status ${code}`,
+              ),
             ),
           );
         });

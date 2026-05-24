@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   Turn,
   GeminiEventType,
+  collapseStreamOverlap,
   type ServerGeminiToolCallRequestEvent,
   type ServerGeminiErrorEvent,
 } from './turn.js';
@@ -906,6 +907,128 @@ describe('Turn', () => {
         // consume stream
       }
       expect(turn.getDebugResponses()).toEqual([resp1, resp2]);
+    });
+  });
+
+  describe('getResponseText / collapseStreamOverlap (SOUL-SOUL_DESKTOP-264)', () => {
+    // Pure-function tests for the collapse helper. The Turn-integration test
+    // below covers the in-pipeline behavior via run().
+
+    it('returns empty string for empty input', () => {
+      expect(collapseStreamOverlap([])).toBe('');
+    });
+
+    it('passes a single chunk through unchanged', () => {
+      expect(collapseStreamOverlap(['hello world'])).toBe('hello world');
+    });
+
+    it('joins pure deltas with a single space (back-compat)', () => {
+      expect(collapseStreamOverlap(['Hello', 'world', 'again'])).toBe(
+        'Hello world again',
+      );
+    });
+
+    it('collapses overlap when next chunk re-emits a long suffix', () => {
+      // The exact disk-pattern observed on job-hunt session 82a1b676:
+      // a snapshot chunk re-emits text already streamed in chunk 0.
+      const chunk0 =
+        'Hello. I am ready to assist with your job search, response monitoring loop, or Soul OS kernel architecture. Let me know what we are targeting.';
+      const chunk1 =
+        'to assist with your job search, response monitoring loop, or Soul OS kernel architecture. Let me know what we are targeting. And here is the new tail.';
+      const out = collapseStreamOverlap([chunk0, chunk1]);
+      // The repeated middle should appear exactly once.
+      const occurrences =
+        out.split('to assist with your job search').length - 1;
+      expect(occurrences).toBe(1);
+      expect(out).toContain('And here is the new tail.');
+      // No double-space artifact between the seam.
+      expect(out).not.toContain('targeting.  to assist');
+    });
+
+    it('preserves short legitimate repeats below MIN_OVERLAP (16 chars)', () => {
+      // "the the" is only 7 chars of overlap candidate; below threshold.
+      // Treat as a true delta and keep both occurrences.
+      const out = collapseStreamOverlap(['Click the', 'the button']);
+      expect(out).toBe('Click the the button');
+    });
+
+    it('preserves repeated code-snippet tokens (} } pattern)', () => {
+      // Repeated closing-brace blocks are common in generated code; the short
+      // repeat between chunks must survive (overlap < MIN_OVERLAP).
+      const a = 'function a() {\n  return 1;\n}';
+      const b = '\n\nfunction b() {\n  return 2;\n}';
+      // Overlap candidates here are at most a few chars of "}" / newline, all
+      // < MIN_OVERLAP, so we expect the standard " "-separator fallback.
+      const out = collapseStreamOverlap([a, b]);
+      expect(out).toContain('function a()');
+      expect(out).toContain('function b()');
+      expect(out).toContain('return 1;');
+      expect(out).toContain('return 2;');
+    });
+
+    it('handles 3-chunk overlap chain (delta, snapshot, new delta)', () => {
+      const c0 = 'The quick brown fox jumps over the lazy dog every morning.';
+      const c1 =
+        'jumps over the lazy dog every morning. And then runs away to the forest.';
+      const c2 = 'forest. Finally it rests at noon.';
+      const out = collapseStreamOverlap([c0, c1, c2]);
+      // Each phrase appears exactly once.
+      expect(out.split('jumps over the lazy dog').length - 1).toBe(1);
+      expect(out.split('to the forest').length - 1).toBe(1);
+      expect(out).toContain('Finally it rests at noon.');
+    });
+
+    it('caps overlap scan at MAX_OVERLAP_SCAN (no quadratic blowup)', () => {
+      // Two 50KB chunks: even if their entire bodies overlap, the scan only
+      // looks at the last 4096 chars. The collapse may be partial (not
+      // catastrophic) but the call must return promptly. We assert on time
+      // budget rather than full collapse correctness here.
+      const big = 'x'.repeat(50_000);
+      const start = Date.now();
+      const out = collapseStreamOverlap([big, big]);
+      const elapsedMs = Date.now() - start;
+      expect(elapsedMs).toBeLessThan(500);
+      // With the cap, at most MAX_OVERLAP_SCAN (4096) chars are collapsed,
+      // so the output length sits between |big| + (|big| - MAX_OVERLAP_SCAN)
+      // and 2*|big| + 1. Just sanity-check it didn't double-output.
+      expect(out.length).toBeLessThan(big.length * 2);
+    });
+
+    it('integrates with Turn: doubled stream chunks collapse in getResponseText', async () => {
+      // End-to-end through Turn.run() to confirm getResponseText() sees the
+      // collapsed text. Mirrors the gemini-cli stream pattern that produced
+      // the SOUL-SOUL_DESKTOP-264 disk doubling.
+      const chunkA =
+        'Hello. I am ready to assist with your job search. Let me know what we are targeting.';
+      const chunkB =
+        'to assist with your job search. Let me know what we are targeting. Plus a tail.';
+      const mockResponseStream = (async function* () {
+        yield {
+          type: StreamEventType.CHUNK,
+          value: {
+            candidates: [{ content: { parts: [{ text: chunkA }] } }],
+          } as GenerateContentResponse,
+        };
+        yield {
+          type: StreamEventType.CHUNK,
+          value: {
+            candidates: [{ content: { parts: [{ text: chunkB }] } }],
+          } as GenerateContentResponse,
+        };
+      })();
+      mockSendMessageStream.mockResolvedValue(mockResponseStream);
+      const reqParts: Part[] = [{ text: 'Hi' }];
+      for await (const _ of turn.run(
+        { model: 'gemini' },
+        reqParts,
+        new AbortController().signal,
+      )) {
+        // consume stream
+      }
+      const out = turn.getResponseText();
+      expect(out.split('to assist with your job search').length - 1).toBe(1);
+      expect(out).toContain('Plus a tail.');
+      expect(out).not.toContain('targeting.  to assist');
     });
   });
 });

@@ -504,14 +504,66 @@ export class Turn {
    * Get the concatenated response text from all responses in this turn.
    * This extracts and joins all text content from the model's responses.
    * The result is cached since this is called multiple times per turn.
+   *
+   * Gemini's stream usually emits pure deltas, but around thought,
+   * function-call, or retry boundaries it can re-emit text that already
+   * appeared in a previous chunk. A naive `.join(' ')` then writes the
+   * overlapping suffix twice. We walk the chunks and, before appending
+   * the next one, collapse the longest suffix-of-accumulated that
+   * prefixes-the-next (>= MIN_OVERLAP, capped at MAX_OVERLAP_SCAN) so
+   * the accumulated text matches what the model actually produced. The
+   * short MIN_OVERLAP guard keeps legitimate small repeats ("the the",
+   * closing braces in code) intact; the MAX_OVERLAP_SCAN cap keeps the
+   * suffix search linear-ish for large code-gen chunks.
+   * See SOUL-SOUL_DESKTOP-264.
    */
   getResponseText(): string {
     if (this.cachedResponseText === undefined) {
-      this.cachedResponseText = this.debugResponses
+      const texts = this.debugResponses
         .map((response) => getResponseText(response))
-        .filter((text): text is string => text !== null)
-        .join(' ');
+        .filter((text): text is string => text !== null && text.length > 0);
+      this.cachedResponseText = collapseStreamOverlap(texts);
     }
     return this.cachedResponseText;
   }
+}
+
+/** Minimum overlap (in chars) before we treat a suffix==prefix match as a
+ *  re-emission rather than a coincidental short repeat. */
+const MIN_OVERLAP = 16;
+/** Cap on the suffix length we scan for overlap. Keeps the O(k) tail-check
+ *  bounded on multi-KB code-gen chunks. */
+const MAX_OVERLAP_SCAN = 4096;
+
+/**
+ * Concatenates streamed chunk texts while collapsing self-overlaps where the
+ * head of `next` reappears the tail of the accumulated text. Used by
+ * Turn.getResponseText() — see comment there for context.
+ *
+ * Algorithm: for each subsequent chunk, find the largest k in
+ * [MIN_OVERLAP, min(|accum|, |next|, MAX_OVERLAP_SCAN)] such that
+ * accum.endsWith(next.slice(0, k)). Append next.slice(k); if no overlap
+ * found, fall back to a single-space separator to preserve the prior
+ * `.join(' ')` semantics for true deltas.
+ */
+export function collapseStreamOverlap(texts: string[]): string {
+  let result = '';
+  for (const text of texts) {
+    if (!result) {
+      result = text;
+      continue;
+    }
+    const maxK = Math.min(result.length, text.length, MAX_OVERLAP_SCAN);
+    let overlap = 0;
+    for (let k = maxK; k >= MIN_OVERLAP; k--) {
+      // endsWith with a position arg would avoid the slice allocation, but
+      // the slice form is clearer and the cap keeps the cost bounded.
+      if (result.endsWith(text.slice(0, k))) {
+        overlap = k;
+        break;
+      }
+    }
+    result += overlap > 0 ? text.slice(overlap) : ' ' + text;
+  }
+  return result;
 }

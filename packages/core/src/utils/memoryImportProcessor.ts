@@ -137,7 +137,8 @@ function findImports(
       importPath.length > 0 &&
       (importPath[0] === '.' ||
         importPath[0] === '/' ||
-        isLetter(importPath[0]))
+        isLetter(importPath[0])) &&
+      looksLikeImportPath(importPath)
     ) {
       imports.push({
         start: i,
@@ -162,6 +163,22 @@ function isLetter(char: string): boolean {
     (code >= 65 && code <= 90) || // A-Z
     (code >= 97 && code <= 122)
   ); // a-z
+}
+
+function looksLikeImportPath(importPath: string): boolean {
+  if (
+    importPath.startsWith('./') ||
+    importPath.startsWith('../') ||
+    importPath.startsWith('/') ||
+    importPath.startsWith('~/')
+  ) {
+    return true;
+  }
+
+  // Bare social-style mentions such as @adversarial_judge are common in
+  // project instructions and should not be treated as failed file imports.
+  const ext = path.extname(importPath);
+  return importPath.includes('/') || /^[.][A-Za-z0-9]+$/.test(ext);
 }
 
 function findCodeRegions(content: string): Array<[number, number]> {

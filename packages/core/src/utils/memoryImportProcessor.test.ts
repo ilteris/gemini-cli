@@ -289,6 +289,37 @@ describe('memoryImportProcessor', () => {
       expect(result.content).toContain(secondContent);
     });
 
+    it('should ignore bare at-mentions that are not file paths', async () => {
+      const content = [
+        'Ask @adversarial_judge to compare @systems_architect.',
+        'Route through @registry_guardian, @information_retriever: and @code_archaeologist).',
+        'Connector examples like @github and annotations like @Test are prose.',
+        'Use @README.md for context.',
+      ].join(' ');
+      const basePath = testPath('test', 'path');
+      const importedContent = 'Readme content';
+
+      mockedFs.access.mockResolvedValue(undefined);
+      mockedFs.readFile.mockResolvedValue(importedContent);
+
+      const result = await processImports(content, basePath, true);
+
+      expect(result.content).toContain('@adversarial_judge');
+      expect(result.content).toContain('@systems_architect.');
+      expect(result.content).toContain('@registry_guardian,');
+      expect(result.content).toContain('@information_retriever:');
+      expect(result.content).toContain('@code_archaeologist).');
+      expect(result.content).toContain('@github');
+      expect(result.content).toContain('@Test');
+      expect(result.content).toContain('<!-- Imported from: README.md -->');
+      expect(result.content).toContain(importedContent);
+      expect(mockedFs.readFile).toHaveBeenCalledTimes(1);
+      expect(mockedFs.readFile).toHaveBeenCalledWith(
+        path.resolve(basePath, 'README.md'),
+        'utf-8',
+      );
+    });
+
     it('should ignore imports inside code blocks', async () => {
       const content = [
         'Normal content @./should-import.md',

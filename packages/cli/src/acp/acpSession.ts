@@ -795,10 +795,22 @@ export class Session {
           },
         };
 
-        const output = RequestPermissionResponseSchema.parse(
-          await this.connection.requestPermission(params),
-        );
+        // The permission request announces the tool row to the client, so any
+        // heartbeat fired during the wait should refine it via a
+        // tool_call_update rather than re-announcing it as a new tool_call.
         toolCallAnnounced = true;
+
+        // Keep the per-tool heartbeat running across the permission
+        // round-trip. Unlike shouldConfirmExecute() and execute() — both
+        // already wrapped — this await can block for as long as the client
+        // takes to respond. Without a periodic update the client sees the tool
+        // go in_progress and then fall silent, so its stall watchdog can
+        // cancel a turn that is merely awaiting approval.
+        const output = RequestPermissionResponseSchema.parse(
+          await this.withToolCallHeartbeat(sendToolCallHeartbeat, () =>
+            this.connection.requestPermission(params),
+          ),
+        );
 
         const outcome =
           output.outcome.outcome === 'cancelled'

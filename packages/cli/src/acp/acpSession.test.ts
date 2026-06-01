@@ -656,6 +656,81 @@ describe('Session', () => {
     );
   });
 
+  it('keeps the per-tool heartbeat alive across a slow permission round-trip', async () => {
+    vi.useFakeTimers();
+
+    // A permission request that does not resolve until we let it, modelling a
+    // client that is slow (or briefly wedged) approving a tool call.
+    let resolvePermission: (value: unknown) => void = () => {};
+    mockConnection.requestPermission.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePermission = resolve;
+      }) as unknown as ReturnType<typeof mockConnection.requestPermission>,
+    );
+
+    mockTool.build.mockReturnValue({
+      getDescription: () => 'Test Tool',
+      getExplanation: () => 'Test Explanation',
+      toolLocations: () => [],
+      shouldConfirmExecute: vi
+        .fn()
+        .mockResolvedValue({ type: 'info', onConfirm: vi.fn() }),
+      execute: vi.fn().mockResolvedValue({ llmContent: 'Tool Result' }),
+    });
+
+    const stream1 = createMockStream([
+      {
+        type: GeminiEventType.ToolCallRequest,
+        value: {
+          callId: 'call-hb',
+          name: 'test_tool',
+          args: {},
+          isClientInitiated: false,
+          prompt_id: 'prompt-1',
+        },
+      },
+    ]);
+    const stream2 = createMockStream([
+      { type: GeminiEventType.Content, value: '' },
+    ]);
+    mockSendMessageStream
+      .mockReturnValueOnce(stream1)
+      .mockReturnValueOnce(stream2);
+
+    const promptPromise = session.prompt({
+      sessionId: 'session-1',
+      prompt: [{ type: 'text', text: 'Call tool' }],
+    });
+
+    // Let execution progress to the (now pending) requestPermission await,
+    // which arms the per-tool heartbeat interval.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mockConnection.requestPermission).toHaveBeenCalled();
+
+    // While the client has not yet responded, crossing the 60s interval must
+    // emit a tool_call_update heartbeat so the client's stall watchdog does
+    // not cancel a turn that is merely awaiting approval.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mockConnection.sessionUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'call-hb',
+          status: 'in_progress',
+        }),
+      }),
+    );
+
+    // The client finally approves; the turn drains to completion.
+    resolvePermission({
+      outcome: { outcome: 'selected', optionId: 'proceed_once' },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    await promptPromise;
+
+    vi.useRealTimers();
+  });
+
   it('should add explanation to tool_call update content instead of thought chunk when no permission required', async () => {
     mockTool.build.mockReturnValue({
       getDescription: () => 'Test Tool',

@@ -8,6 +8,7 @@ import {
   type Config,
   type ToolResult,
   type ToolCallConfirmationDetails,
+  type ToolConfirmationPayload,
   Kind,
   ApprovalMode,
   GEMINI_MODEL_ALIAS_AUTO,
@@ -40,6 +41,7 @@ export const RequestPermissionResponseSchema = z.object({
     z.object({
       outcome: z.literal('selected'),
       optionId: z.string(),
+      payload: z.custom<ToolConfirmationPayload>().optional(),
     }),
   ]),
 });

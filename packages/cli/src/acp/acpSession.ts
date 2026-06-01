@@ -60,6 +60,8 @@ const StructuredErrorSchema = z.object({
   message: z.string().optional(),
 });
 
+const TOOL_CALL_HEARTBEAT_INTERVAL_MS = 60_000;
+
 export class Session {
   private pendingPrompt: AbortController | null = null;
   private commandHandler = new CommandHandler();
@@ -629,6 +631,26 @@ export class Session {
     await this.connection.sessionUpdate(params);
   }
 
+  private async withToolCallHeartbeat<T>(
+    sendHeartbeat: () => Promise<void>,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const heartbeat = setInterval(() => {
+      void sendHeartbeat().catch((error) => {
+        debugLogger.warn(
+          `Failed to send ACP tool-call heartbeat: ${getErrorMessage(error)}`,
+        );
+      });
+    }, TOOL_CALL_HEARTBEAT_INTERVAL_MS);
+    heartbeat.unref?.();
+
+    try {
+      return await operation();
+    } finally {
+      clearInterval(heartbeat);
+    }
+  }
+
   private async runTool(
     abortSignal: AbortSignal,
     promptId: string,
@@ -700,8 +722,35 @@ export class Session {
           ? invocation.getExplanation()
           : '';
 
-      const confirmationDetails =
-        await invocation.shouldConfirmExecute(abortSignal);
+      let toolCallAnnounced = false;
+      const sendToolCallHeartbeat = async () => {
+        const baseUpdate = {
+          toolCallId: callId,
+          status: 'in_progress' as const,
+          title: displayTitle,
+          content: [],
+          locations: invocation.toolLocations(),
+          kind: toAcpToolKind(tool.kind),
+        };
+
+        if (toolCallAnnounced) {
+          await this.sendUpdate({
+            sessionUpdate: 'tool_call_update',
+            ...baseUpdate,
+          });
+        } else {
+          await this.sendUpdate({
+            sessionUpdate: 'tool_call',
+            ...baseUpdate,
+          });
+          toolCallAnnounced = true;
+        }
+      };
+
+      const confirmationDetails = await this.withToolCallHeartbeat(
+        sendToolCallHeartbeat,
+        () => invocation.shouldConfirmExecute(abortSignal),
+      );
 
       if (confirmationDetails) {
         const content: acp.ToolCallContent[] = [];
@@ -749,6 +798,7 @@ export class Session {
         const output = RequestPermissionResponseSchema.parse(
           await this.connection.requestPermission(params),
         );
+        toolCallAnnounced = true;
 
         const outcome =
           output.outcome.outcome === 'cancelled'
@@ -757,7 +807,12 @@ export class Session {
                 .nativeEnum(ToolConfirmationOutcome)
                 .parse(output.outcome.optionId);
 
-        await confirmationDetails.onConfirm(outcome);
+        const payload =
+          output.outcome.outcome === 'selected' && 'payload' in output.outcome
+            ? output.outcome.payload
+            : undefined;
+
+        await confirmationDetails.onConfirm(outcome, payload);
 
         // Update policy to enable Always Allow persistence
         await updatePolicy(
@@ -796,20 +851,37 @@ export class Session {
           });
         }
 
-        await this.sendUpdate({
-          sessionUpdate: 'tool_call',
-          toolCallId: callId,
-          status: 'in_progress',
-          title: displayTitle,
-          content,
-          locations: invocation.toolLocations(),
-          kind: toAcpToolKind(tool.kind),
-        });
+        if (toolCallAnnounced) {
+          await this.sendUpdate({
+            sessionUpdate: 'tool_call_update',
+            toolCallId: callId,
+            status: 'in_progress',
+            title: displayTitle,
+            content,
+            locations: invocation.toolLocations(),
+            kind: toAcpToolKind(tool.kind),
+          });
+        } else {
+          await this.sendUpdate({
+            sessionUpdate: 'tool_call',
+            toolCallId: callId,
+            status: 'in_progress',
+            title: displayTitle,
+            content,
+            locations: invocation.toolLocations(),
+            kind: toAcpToolKind(tool.kind),
+          });
+          toolCallAnnounced = true;
+        }
       }
 
-      const toolResult: ToolResult = await invocation.execute({
-        abortSignal,
-      });
+      const toolResult: ToolResult = await this.withToolCallHeartbeat(
+        sendToolCallHeartbeat,
+        () =>
+          invocation.execute({
+            abortSignal,
+          }),
+      );
       const content = toToolCallContent(toolResult);
 
       const updateContent: acp.ToolCallContent[] = content ? [content] : [];
@@ -1351,7 +1423,22 @@ export class Session {
           kind: toAcpToolKind(readManyFilesTool.kind),
         });
 
-        const result = await invocation.execute({ abortSignal });
+        const sendReadManyFilesHeartbeat = async () => {
+          await this.sendUpdate({
+            sessionUpdate: 'tool_call_update',
+            toolCallId: callId,
+            status: 'in_progress',
+            title: invocation.getDescription(),
+            content: [],
+            locations: invocation.toolLocations(),
+            kind: toAcpToolKind(readManyFilesTool.kind),
+          });
+        };
+
+        const result = await this.withToolCallHeartbeat(
+          sendReadManyFilesHeartbeat,
+          () => invocation.execute({ abortSignal }),
+        );
         const content = toToolCallContent(result) || {
           type: 'content',
           content: {

@@ -11,8 +11,22 @@ import {
 } from '@google/gemini-cli-core';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import { compressCommand } from './compressCommand.js';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createMockCommandContext } from '../../test-utils/mockCommandContext.js';
 import { MessageType } from '../types.js';
+
+// Mock child_process entirely inside the factory (no out-of-scope variables referenced)
+vi.mock('node:child_process', () => {
+  const mockExecPromise = vi.fn();
+  const execMock = vi.fn();
+  (execMock as unknown as Record<string | symbol, unknown>)[
+    Symbol.for('nodejs.util.promisify.custom')
+  ] = mockExecPromise;
+  return { exec: execMock };
+});
+
+const execAsync = promisify(exec);
 
 describe('compressCommand', () => {
   let context: ReturnType<typeof createMockCommandContext>;
@@ -29,6 +43,7 @@ describe('compressCommand', () => {
         },
       },
     });
+    vi.mocked(execAsync).mockReset();
   });
 
   it('should do nothing if a compression is already pending', async () => {
@@ -141,6 +156,61 @@ describe('compressCommand', () => {
       expect(compressCommand.name).toBe('compress');
       expect(compressCommand.altNames).toContain('summarize');
       expect(compressCommand.altNames).toContain('compact');
+    });
+  });
+
+  describe('compact alias checking logic', () => {
+    it('should skip compaction if soul compact skips', async () => {
+      vi.mocked(execAsync).mockResolvedValue({
+        stdout: JSON.stringify({
+          action: 'skip',
+          usage_pct: 0.22,
+          reason: 'below_threshold',
+        }),
+        stderr: '',
+      });
+
+      context.invocation = {
+        raw: '/compact',
+        name: 'compact',
+        args: '',
+      };
+
+      await compressCommand.action!(context, '');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(context.ui.addItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: MessageType.INFO,
+          text: 'Context is at 22%. Compaction skipped (below threshold of 50%).',
+        }),
+        expect.any(Number),
+      );
+      expect(mockTryCompressChat).not.toHaveBeenCalled();
+    });
+
+    it('should run compaction if soul compact recommends it', async () => {
+      vi.mocked(execAsync).mockResolvedValue({
+        stdout: JSON.stringify({ action: 'send_slash', command: '/compress' }),
+        stderr: '',
+      });
+
+      mockTryCompressChat.mockResolvedValue({
+        originalTokenCount: 200,
+        compressionStatus: CompressionStatus.COMPRESSED,
+        newTokenCount: 100,
+      });
+
+      context.invocation = {
+        raw: '/compact',
+        name: 'compact',
+        args: '',
+      };
+
+      await compressCommand.action!(context, '');
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mockTryCompressChat).toHaveBeenCalled();
     });
   });
 });

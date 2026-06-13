@@ -263,4 +263,21 @@ describe('AgentTool', () => {
       expect(RemoteSessionInvocation).not.toHaveBeenCalled();
     });
   });
+
+  describe('Subagent Recursion and Environment Constraints', () => {
+    it('should throw an error during createInvocation if SOUL_IS_SUBAGENT === 1 (recursion cap)', () => {
+      vi.stubEnv('SOUL_IS_SUBAGENT', '1');
+      tool = new AgentTool(mockConfig, mockMessageBus);
+
+      const params = {
+        agent_name: 'TestLocalAgent',
+        prompt: 'Do something recursive',
+      };
+      expect(() => {
+        tool['createInvocation'](params, mockMessageBus);
+      }).toThrow('Subagent recursion cap reached (depth 1).');
+
+      vi.unstubAllEnvs();
+    });
+  });
 });

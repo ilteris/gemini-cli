@@ -473,6 +473,37 @@ describe('Server Config (config.ts)', () => {
       expect(mcpStarted).toBe(true);
     });
 
+    it('should NOT start configured MCP servers if SOUL_IS_SUBAGENT === 1', async () => {
+      vi.stubEnv('SOUL_IS_SUBAGENT', '1');
+      const config = new Config({
+        ...baseParams,
+        checkpointing: false,
+      });
+
+      const { McpClientManager } = await import(
+        '../tools/mcp-client-manager.js'
+      );
+      let mcpStarted = false;
+
+      vi.mocked(McpClientManager).mockImplementation(
+        () =>
+          ({
+            startConfiguredMcpServers: vi.fn().mockImplementation(async () => {
+              mcpStarted = true;
+            }),
+            getMcpInstructions: vi.fn(),
+            setMainRegistries: vi.fn(),
+          }) as Partial<McpClientManager> as McpClientManager,
+      );
+
+      await config.initialize();
+
+      // Should bypass startConfiguredMcpServers entirely
+      expect(mcpStarted).toBe(false);
+
+      vi.unstubAllEnvs();
+    });
+
     it('should not await MCP initialization in interactive mode', async () => {
       const config = new Config({
         ...baseParams,

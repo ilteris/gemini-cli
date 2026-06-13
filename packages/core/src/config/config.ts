@@ -1507,8 +1507,11 @@ export class Config implements McpContext, AgentLoopContext {
     });
     // We do not await this promise so that the CLI can start up even if
     // MCP servers are slow to connect.
+    const skipMcp = process.env['SOUL_IS_SUBAGENT'] === '1';
     this.mcpInitializationPromise = Promise.allSettled([
-      this.mcpClientManager.startConfiguredMcpServers(),
+      skipMcp
+        ? Promise.resolve()
+        : this.mcpClientManager.startConfiguredMcpServers(),
       this.getExtensionLoader().start(this),
     ]).then((results) => {
       for (const result of results) {

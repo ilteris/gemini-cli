@@ -19,6 +19,7 @@ import type {
   AgentDefinition,
   AgentInputs,
   SubagentProgress,
+  SubagentActivityItem,
 } from './types.js';
 import { SubagentState } from './types.js';
 import { LocalSubagentInvocation } from './local-invocation.js';
@@ -128,6 +129,10 @@ export class AgentTool extends BaseDeclarativeTool<
     _toolName?: string,
     _toolDisplayName?: string,
   ): ToolInvocation<{ agent_name: string; prompt: string }, ToolResult> {
+    if (process.env['SOUL_IS_SUBAGENT'] === '1') {
+      throw new Error('Subagent recursion cap reached (depth 1).');
+    }
+
     const registry = this.context.config.getAgentRegistry();
     const definition = registry.getDefinition(params.agent_name);
 
@@ -212,23 +217,25 @@ class SoulDelegateInvocation extends BaseToolInvocation<
       'sync',
       '--call-id',
       callId,
+      '--stream',
     ];
 
-    const progress = (
+    const activities: SubagentActivityItem[] = [
+      {
+        id: activityId,
+        type: 'thought',
+        content: 'Routing Gemini native delegation through soul delegate.',
+        status: SubagentState.RUNNING,
+      },
+    ];
+
+    const getProgress = (
       state: SubagentState,
-      content: string,
       result?: string,
     ): SubagentProgress => ({
       isSubagentProgress: true,
       agentName: this.definition.name,
-      recentActivity: [
-        {
-          id: activityId,
-          type: 'thought',
-          content,
-          status: state,
-        },
-      ],
+      recentActivity: [...activities],
       state,
       result,
     });
@@ -247,12 +254,82 @@ class SoulDelegateInvocation extends BaseToolInvocation<
       });
     };
 
-    const initial = progress(
-      SubagentState.RUNNING,
-      'Routing Gemini native delegation through soul delegate.',
-    );
-    updateOutput?.(initial);
-    publish(SubagentState.RUNNING, initial.recentActivity[0].content);
+    const updateAndPublish = (
+      state: SubagentState,
+      statusText: string,
+    ): void => {
+      updateOutput?.(getProgress(state));
+      publish(state, statusText);
+    };
+
+    interface StreamEvent {
+      event: string;
+      specialist?: string;
+      provider?: string;
+      text?: string;
+      id?: string;
+      name?: string;
+      displayName?: string;
+      args?: Record<string, unknown>;
+      status?: string;
+    }
+
+    const handleStreamEvent = (event: StreamEvent): void => {
+      if (!event || typeof event !== 'object') return;
+
+      if (event.event === 'subagent_started') {
+        const item = activities.find((a) => a.id === activityId);
+        if (item) {
+          item.content = `Soul delegate @${event.specialist ?? 'agent'} started on provider ${event.provider ?? 'provider'}.`;
+        }
+        updateAndPublish(
+          SubagentState.RUNNING,
+          `Started @${event.specialist ?? 'agent'} on ${event.provider ?? 'provider'}`,
+        );
+      } else if (event.event === 'thought_chunk') {
+        const last = activities[activities.length - 1];
+        if (last && last.type === 'thought') {
+          last.content += event.text ?? '';
+        } else {
+          activities.push({
+            id: randomUUID(),
+            type: 'thought',
+            content: event.text ?? '',
+            status: SubagentState.RUNNING,
+          });
+        }
+        updateAndPublish(SubagentState.RUNNING, event.text ?? '');
+      } else if (event.event === 'tool_call_start') {
+        activities.push({
+          id: event.id || randomUUID(),
+          type: 'tool_call',
+          content: `🔧 Running tool: ${event.displayName || event.name || 'tool'}`,
+          displayName: event.displayName || event.name,
+          args: event.args ? JSON.stringify(event.args) : undefined,
+          status: SubagentState.RUNNING,
+        });
+        updateAndPublish(
+          SubagentState.RUNNING,
+          `Running tool: ${event.displayName || event.name}`,
+        );
+      } else if (event.event === 'tool_call_end') {
+        const item = activities.find((a) => a.id === event.id);
+        if (item) {
+          item.status =
+            event.status === 'completed'
+              ? SubagentState.COMPLETED
+              : SubagentState.ERROR;
+          item.content = `🔧 Tool completed: ${item.displayName || 'tool'}`;
+        }
+        updateAndPublish(
+          SubagentState.RUNNING,
+          `Completed tool: ${event.id ?? ''}`,
+        );
+      }
+    };
+
+    updateOutput?.(getProgress(SubagentState.RUNNING));
+    publish(SubagentState.RUNNING, activities[0].content);
 
     try {
       const output = await new Promise<string>((resolve, reject) => {
@@ -269,13 +346,14 @@ class SoulDelegateInvocation extends BaseToolInvocation<
         });
         let stdout = '';
         let stderr = '';
+        let stdoutBuffer = '';
 
         const progressTimer = setInterval(() => {
           elapsedSeconds += 15;
           const content = `Soul delegate still running (${elapsedSeconds}s elapsed).`;
-          updateOutput?.(progress(SubagentState.RUNNING, content));
-          publish(SubagentState.RUNNING, content);
+          updateAndPublish(SubagentState.RUNNING, content);
         }, 15000);
+
         const settle = (fn: () => void): void => {
           if (settled) {
             return;
@@ -298,18 +376,121 @@ class SoulDelegateInvocation extends BaseToolInvocation<
         }
 
         signal.addEventListener('abort', abort, { once: true });
+
         child.stdout.on('data', (chunk: Buffer) => {
-          stdout += chunk.toString('utf8');
+          const chunkStr = chunk.toString('utf8');
+          stdoutBuffer += chunkStr;
+
+          const lines = stdoutBuffer.split('\n');
+          stdoutBuffer = lines.pop() ?? ''; // Keep last unfinished line in buffer
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            try {
+              const parsed: unknown = JSON.parse(trimmed);
+              if (isRecord(parsed)) {
+                const parsedEvent = parsed['event'];
+                if (typeof parsedEvent === 'string') {
+                  const specialistVal = parsed['specialist'];
+                  const providerVal = parsed['provider'];
+                  const textVal = parsed['text'];
+                  const idVal = parsed['id'];
+                  const nameVal = parsed['name'];
+                  const displayNameVal = parsed['displayName'];
+                  const argsVal = parsed['args'];
+                  const statusVal = parsed['status'];
+
+                  const event: StreamEvent = {
+                    event: parsedEvent,
+                    specialist:
+                      typeof specialistVal === 'string'
+                        ? specialistVal
+                        : undefined,
+                    provider:
+                      typeof providerVal === 'string' ? providerVal : undefined,
+                    text: typeof textVal === 'string' ? textVal : undefined,
+                    id: typeof idVal === 'string' ? idVal : undefined,
+                    name: typeof nameVal === 'string' ? nameVal : undefined,
+                    displayName:
+                      typeof displayNameVal === 'string'
+                        ? displayNameVal
+                        : undefined,
+                    args: isRecord(argsVal) ? argsVal : undefined,
+                    status:
+                      typeof statusVal === 'string' ? statusVal : undefined,
+                  };
+                  handleStreamEvent(event);
+                  continue;
+                }
+              }
+            } catch {
+              // Fallback to normal stdout accumulation if not valid JSON stream event
+            }
+            stdout += line + '\n';
+          }
         });
+
         child.stderr.on('data', (chunk: Buffer) => {
           stderr += chunk.toString('utf8');
         });
+
         child.on('error', (error) => {
           signal.removeEventListener('abort', abort);
           settle(() => reject(error));
         });
+
         child.on('close', (code) => {
           signal.removeEventListener('abort', abort);
+
+          const trimmed = stdoutBuffer.trim();
+          if (trimmed) {
+            try {
+              const parsed: unknown = JSON.parse(trimmed);
+              if (isRecord(parsed)) {
+                const parsedEvent = parsed['event'];
+                if (typeof parsedEvent === 'string') {
+                  const specialistVal = parsed['specialist'];
+                  const providerVal = parsed['provider'];
+                  const textVal = parsed['text'];
+                  const idVal = parsed['id'];
+                  const nameVal = parsed['name'];
+                  const displayNameVal = parsed['displayName'];
+                  const argsVal = parsed['args'];
+                  const statusVal = parsed['status'];
+
+                  const event: StreamEvent = {
+                    event: parsedEvent,
+                    specialist:
+                      typeof specialistVal === 'string'
+                        ? specialistVal
+                        : undefined,
+                    provider:
+                      typeof providerVal === 'string' ? providerVal : undefined,
+                    text: typeof textVal === 'string' ? textVal : undefined,
+                    id: typeof idVal === 'string' ? idVal : undefined,
+                    name: typeof nameVal === 'string' ? nameVal : undefined,
+                    displayName:
+                      typeof displayNameVal === 'string'
+                        ? displayNameVal
+                        : undefined,
+                    args: isRecord(argsVal) ? argsVal : undefined,
+                    status:
+                      typeof statusVal === 'string' ? statusVal : undefined,
+                  };
+                  handleStreamEvent(event);
+                } else {
+                  stdout += trimmed + '\n';
+                }
+              } else {
+                stdout += trimmed + '\n';
+              }
+            } catch {
+              stdout += trimmed + '\n';
+            }
+          }
+
           if (code === 0) {
             settle(() => resolve(stdout));
             return;
@@ -339,13 +520,16 @@ class SoulDelegateInvocation extends BaseToolInvocation<
         // Non-JSON output is still a valid delegate result.
       }
 
-      const completed = progress(
-        SubagentState.COMPLETED,
-        'Soul delegate completed.',
-        summary,
-      );
+      // Turn any currently running activities to completed on finish.
+      for (const act of activities) {
+        if (act.status === SubagentState.RUNNING) {
+          act.status = SubagentState.COMPLETED;
+        }
+      }
+
+      const completed = getProgress(SubagentState.COMPLETED, summary);
       updateOutput?.(completed);
-      publish(SubagentState.COMPLETED, completed.recentActivity[0].content);
+      publish(SubagentState.COMPLETED, 'Soul delegate completed.');
 
       const resultContent = `Subagent '${this.definition.name}' finished via soul delegate.
 Result:
@@ -364,7 +548,14 @@ ${summary}`;
       const message = error instanceof Error ? error.message : String(error);
       const isAbort = error instanceof Error && error.name === 'AbortError';
       const state = isAbort ? SubagentState.CANCELLED : SubagentState.ERROR;
-      const failed = progress(state, message);
+
+      for (const act of activities) {
+        if (act.status === SubagentState.RUNNING) {
+          act.status = state;
+        }
+      }
+
+      const failed = getProgress(state);
       updateOutput?.(failed);
       publish(state, message);
 

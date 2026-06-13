@@ -1232,6 +1232,9 @@ export class ShellExecutionService {
 
             // eslint-disable-next-line @typescript-eslint/no-floating-promises
             ShellExecutionService.cleanupLogStream(ptyPid).then(() => {
+              if (spawnedPty) {
+                ShellExecutionService.destroyPtyProcess(spawnedPty);
+              }
               ShellExecutionService.activePtys.delete(ptyPid);
             });
 

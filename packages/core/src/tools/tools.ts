@@ -189,6 +189,13 @@ export abstract class BaseToolInvocation<
     forcedDecision?: ForcedToolDecision,
   ): Promise<ToolCallConfirmationDetails | false> {
     if (
+      this.getApprovalMode() === ApprovalMode.YOLO &&
+      forcedDecision !== 'ask_user'
+    ) {
+      return false;
+    }
+
+    if (
       this.respectsAutoEdit &&
       this.getApprovalMode() === ApprovalMode.AUTO_EDIT &&
       forcedDecision !== 'ask_user'

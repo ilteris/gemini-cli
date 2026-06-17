@@ -25,6 +25,25 @@ vi.mock('./local-session-invocation.js');
 vi.mock('./remote-session-invocation.js');
 vi.mock('./browser/browserAgentInvocation.js');
 
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    existsSync: vi.fn().mockImplementation((path) => {
+      if (path.toString().includes('adversarial_judge')) return true;
+      return actual.existsSync(path);
+    }),
+  };
+});
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    spawn: vi.fn(),
+  };
+});
+
 describe('AgentTool', () => {
   let mockConfig: Config;
   let mockMessageBus: MessageBus;
@@ -280,4 +299,150 @@ describe('AgentTool', () => {
       vi.unstubAllEnvs();
     });
   });
+
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  describe('SoulDelegateInvocation', () => {
+    it('should stream child process stdout, publish structured activity, and construct metadata', async () => {
+      // Mock child process spawn
+      const { spawn } = await import('node:child_process');
+      const { EventEmitter } = await import('node:events');
+
+      const mockChild = new EventEmitter() as any;
+      mockChild.stdout = new EventEmitter();
+      mockChild.stderr = new EventEmitter();
+      mockChild.kill = vi.fn();
+
+      vi.mocked(spawn).mockReturnValue(mockChild);
+
+      // Create a soul delegated agent definition
+      const registry = mockConfig.getAgentRegistry();
+      const soulDefinition = {
+        kind: 'local' as const,
+        name: 'adversarial_judge',
+        description: 'Test Soul Agent',
+        inputConfig: {
+          inputSchema: {
+            type: 'object',
+            properties: { prompt: { type: 'string' } },
+          },
+        },
+        modelConfig: { model: 'test', generateContentConfig: {} },
+        runConfig: { maxTimeMinutes: 1 },
+        promptConfig: { systemPrompt: 'test' },
+      };
+
+      vi.spyOn(registry, 'getDefinition').mockReturnValue(soulDefinition);
+
+      const params = {
+        agent_name: 'adversarial_judge',
+        prompt: 'Audit this code',
+      };
+      const invocation = tool['createInvocation'](params, mockMessageBus);
+
+      // Execute in background/sync mode
+      const execPromise = invocation.execute({
+        abortSignal: new AbortController().signal,
+        updateOutput: vi.fn(),
+      });
+
+      // Emit simulated streaming JSON events
+      const eventsList = [
+        {
+          event: 'subagent_started',
+          delegation_id: 'del-123',
+          specialist: 'adversarial_judge',
+          provider: 'gemini',
+          live_log: 'live.log',
+        },
+        { event: 'thought_chunk', text: 'Analyzing ' },
+        { event: 'thought_chunk', text: 'correctness.' },
+        {
+          event: 'tool_call_start',
+          id: 'tool-abc',
+          name: 'read_file',
+          displayName: 'Read File',
+          args: { path: 'file.txt' },
+        },
+        { event: 'tool_call_end', id: 'tool-abc', status: 'completed' },
+        {
+          event: 'subagent_completed',
+          delegation_id: 'del-123',
+          summary: 'Audit completed successfully.',
+        },
+      ];
+
+      for (const ev of eventsList) {
+        mockChild.stdout.emit('data', Buffer.from(JSON.stringify(ev) + '\n'));
+      }
+
+      // Close the process
+      mockChild.emit('close', 0);
+
+      const result = await execPromise;
+
+      // Verify final outputs and metadata
+      expect(result.llmContent).toEqual([
+        {
+          text: "Subagent 'adversarial_judge' finished via soul delegate.\nResult:\nAudit completed successfully.",
+        },
+      ]);
+      expect(result.data).toMatchObject({
+        soulDelegate: true,
+        specialist: 'adversarial_judge',
+        delegation_id: 'del-123',
+        live_log: 'live.log',
+        finding_path: undefined,
+        status: 'completed',
+      });
+
+      // Verify that SUBAGENT_ACTIVITY messages were published
+      // It should NOT publish any 'thought' messages containing "Running tool" or "Completed tool" or "Soul delegate still running"
+      const published = vi
+        .mocked(mockMessageBus.publish)
+        .mock.calls.map((c) => c[0]);
+
+      // Filter published activity content
+      const publishedThoughts = published
+        .filter(
+          (p) =>
+            p.type === 'subagent-activity' &&
+            (p as any).activity.type === 'thought',
+        )
+        .map((p) => (p as any).activity.content);
+
+      expect(publishedThoughts).toContain('Analyzing ');
+      expect(publishedThoughts).toContain('correctness.');
+
+      // Ensure no prose leakage / status lines were published as thoughts
+      for (const t of publishedThoughts) {
+        expect(t).not.toContain('Running tool:');
+        expect(t).not.toContain('Completed tool:');
+        expect(t).not.toContain('Soul delegate still running');
+      }
+
+      // Ensure tool call start/end were published as 'tool_call' type, not 'thought'
+      const publishedTools = published
+        .filter(
+          (p) =>
+            p.type === 'subagent-activity' &&
+            (p as any).activity.type === 'tool_call',
+        )
+        .map((p) => (p as any).activity);
+
+      expect(publishedTools).toHaveLength(2); // 1 start, 1 end
+      expect(publishedTools[0]).toMatchObject({
+        id: 'tool-abc',
+        type: 'tool_call',
+        content: '🔧 Running tool: Read File',
+        status: 'running',
+      });
+      expect(publishedTools[1]).toMatchObject({
+        id: 'tool-abc',
+        type: 'tool_call',
+        content: '🔧 Tool completed: Read File',
+        status: 'completed',
+      });
+    });
+  });
+  /* eslint-enable @typescript-eslint/no-explicit-any */
 });

@@ -240,26 +240,22 @@ class SoulDelegateInvocation extends BaseToolInvocation<
       result,
     });
 
-    const publish = (state: SubagentState, content: string): void => {
+    let delegationId: string | undefined;
+    let findingPath: string | undefined;
+    let finalSummary: string | undefined;
+    let liveLog: string | undefined;
+
+    const publishActivity = (activity: SubagentActivityItem): void => {
       void this.messageBus.publish({
         type: MessageBusType.SUBAGENT_ACTIVITY,
         subagentName: this.definition.displayName ?? this.definition.name,
         parentToolCallId: callId,
-        activity: {
-          id: activityId,
-          type: 'thought',
-          content,
-          status: state,
-        },
+        activity: { ...activity },
       });
     };
 
-    const updateAndPublish = (
-      state: SubagentState,
-      statusText: string,
-    ): void => {
+    const updateProgress = (state: SubagentState): void => {
       updateOutput?.(getProgress(state));
-      publish(state, statusText);
     };
 
     interface StreamEvent {
@@ -272,46 +268,70 @@ class SoulDelegateInvocation extends BaseToolInvocation<
       displayName?: string;
       args?: Record<string, unknown>;
       status?: string;
+      delegation_id?: string;
+      finding_path?: string;
+      summary?: string;
+      live_log?: string;
     }
 
     const handleStreamEvent = (event: StreamEvent): void => {
       if (!event || typeof event !== 'object') return;
 
       if (event.event === 'subagent_started') {
+        delegationId = event.id || event.delegation_id;
+        liveLog = event.live_log;
+
         const item = activities.find((a) => a.id === activityId);
         if (item) {
           item.content = `Soul delegate @${event.specialist ?? 'agent'} started on provider ${event.provider ?? 'provider'}.`;
         }
-        updateAndPublish(
-          SubagentState.RUNNING,
-          `Started @${event.specialist ?? 'agent'} on ${event.provider ?? 'provider'}`,
-        );
+        updateProgress(SubagentState.RUNNING);
+      } else if (event.event === 'subagent_completed') {
+        delegationId = event.id || event.delegation_id;
+        findingPath = event.finding_path;
+        finalSummary = event.summary;
+        updateProgress(SubagentState.COMPLETED);
+      } else if (event.event === 'subagent_failed') {
+        delegationId = event.id || event.delegation_id;
+        updateProgress(SubagentState.ERROR);
       } else if (event.event === 'thought_chunk') {
+        let chunkActivity: SubagentActivityItem;
         const last = activities[activities.length - 1];
         if (last && last.type === 'thought') {
           last.content += event.text ?? '';
+          chunkActivity = last;
         } else {
-          activities.push({
+          chunkActivity = {
             id: randomUUID(),
             type: 'thought',
             content: event.text ?? '',
             status: SubagentState.RUNNING,
-          });
+          };
+          activities.push(chunkActivity);
         }
-        updateAndPublish(SubagentState.RUNNING, event.text ?? '');
+        updateProgress(SubagentState.RUNNING);
+
+        // Publish actual thought chunk content
+        publishActivity({
+          id: chunkActivity.id,
+          type: 'thought',
+          content: event.text ?? '',
+          status: SubagentState.RUNNING,
+        });
       } else if (event.event === 'tool_call_start') {
-        activities.push({
+        const toolActivity: SubagentActivityItem = {
           id: event.id || randomUUID(),
           type: 'tool_call',
           content: `🔧 Running tool: ${event.displayName || event.name || 'tool'}`,
           displayName: event.displayName || event.name,
           args: event.args ? JSON.stringify(event.args) : undefined,
           status: SubagentState.RUNNING,
-        });
-        updateAndPublish(
-          SubagentState.RUNNING,
-          `Running tool: ${event.displayName || event.name}`,
-        );
+        };
+        activities.push(toolActivity);
+        updateProgress(SubagentState.RUNNING);
+
+        // Publish the actual tool call start
+        publishActivity(toolActivity);
       } else if (event.event === 'tool_call_end') {
         const item = activities.find((a) => a.id === event.id);
         if (item) {
@@ -320,20 +340,18 @@ class SoulDelegateInvocation extends BaseToolInvocation<
               ? SubagentState.COMPLETED
               : SubagentState.ERROR;
           item.content = `🔧 Tool completed: ${item.displayName || 'tool'}`;
+          updateProgress(SubagentState.RUNNING);
+
+          // Publish the updated tool call end
+          publishActivity(item);
         }
-        updateAndPublish(
-          SubagentState.RUNNING,
-          `Completed tool: ${event.id ?? ''}`,
-        );
       }
     };
 
-    updateOutput?.(getProgress(SubagentState.RUNNING));
-    publish(SubagentState.RUNNING, activities[0].content);
+    updateProgress(SubagentState.RUNNING);
 
     try {
       const output = await new Promise<string>((resolve, reject) => {
-        let elapsedSeconds = 0;
         let settled = false;
         const child = spawn('soul', args, {
           cwd: this.context.config.getProjectRoot(),
@@ -349,9 +367,7 @@ class SoulDelegateInvocation extends BaseToolInvocation<
         let stdoutBuffer = '';
 
         const progressTimer = setInterval(() => {
-          elapsedSeconds += 15;
-          const content = `Soul delegate still running (${elapsedSeconds}s elapsed).`;
-          updateAndPublish(SubagentState.RUNNING, content);
+          updateProgress(SubagentState.RUNNING);
         }, 15000);
 
         const settle = (fn: () => void): void => {
@@ -401,6 +417,10 @@ class SoulDelegateInvocation extends BaseToolInvocation<
                   const displayNameVal = parsed['displayName'];
                   const argsVal = parsed['args'];
                   const statusVal = parsed['status'];
+                  const delegationIdVal = parsed['delegation_id'];
+                  const findingPathVal = parsed['finding_path'];
+                  const summaryVal = parsed['summary'];
+                  const liveLogVal = parsed['live_log'];
 
                   const event: StreamEvent = {
                     event: parsedEvent,
@@ -420,6 +440,18 @@ class SoulDelegateInvocation extends BaseToolInvocation<
                     args: isRecord(argsVal) ? argsVal : undefined,
                     status:
                       typeof statusVal === 'string' ? statusVal : undefined,
+                    delegation_id:
+                      typeof delegationIdVal === 'string'
+                        ? delegationIdVal
+                        : undefined,
+                    finding_path:
+                      typeof findingPathVal === 'string'
+                        ? findingPathVal
+                        : undefined,
+                    summary:
+                      typeof summaryVal === 'string' ? summaryVal : undefined,
+                    live_log:
+                      typeof liveLogVal === 'string' ? liveLogVal : undefined,
                   };
                   handleStreamEvent(event);
                   continue;
@@ -459,6 +491,10 @@ class SoulDelegateInvocation extends BaseToolInvocation<
                   const displayNameVal = parsed['displayName'];
                   const argsVal = parsed['args'];
                   const statusVal = parsed['status'];
+                  const delegationIdVal = parsed['delegation_id'];
+                  const findingPathVal = parsed['finding_path'];
+                  const summaryVal = parsed['summary'];
+                  const liveLogVal = parsed['live_log'];
 
                   const event: StreamEvent = {
                     event: parsedEvent,
@@ -478,6 +514,18 @@ class SoulDelegateInvocation extends BaseToolInvocation<
                     args: isRecord(argsVal) ? argsVal : undefined,
                     status:
                       typeof statusVal === 'string' ? statusVal : undefined,
+                    delegation_id:
+                      typeof delegationIdVal === 'string'
+                        ? delegationIdVal
+                        : undefined,
+                    finding_path:
+                      typeof findingPathVal === 'string'
+                        ? findingPathVal
+                        : undefined,
+                    summary:
+                      typeof summaryVal === 'string' ? summaryVal : undefined,
+                    live_log:
+                      typeof liveLogVal === 'string' ? liveLogVal : undefined,
                   };
                   handleStreamEvent(event);
                 } else {
@@ -505,7 +553,7 @@ class SoulDelegateInvocation extends BaseToolInvocation<
         });
       });
 
-      let summary = output.trim();
+      let summary = finalSummary || output.trim();
       let metadata: Record<string, unknown> | undefined;
       try {
         const parsed: unknown = JSON.parse(summary);
@@ -529,7 +577,6 @@ class SoulDelegateInvocation extends BaseToolInvocation<
 
       const completed = getProgress(SubagentState.COMPLETED, summary);
       updateOutput?.(completed);
-      publish(SubagentState.COMPLETED, 'Soul delegate completed.');
 
       const resultContent = `Subagent '${this.definition.name}' finished via soul delegate.
 Result:
@@ -541,6 +588,11 @@ ${summary}`;
         data: {
           agentId: callId,
           soulDelegate: true,
+          specialist: this.definition.name,
+          delegation_id: delegationId,
+          live_log: liveLog,
+          status: SubagentState.COMPLETED,
+          finding_path: findingPath,
           ...(metadata ? { metadata } : {}),
         },
       };
@@ -557,7 +609,6 @@ ${summary}`;
 
       const failed = getProgress(state);
       updateOutput?.(failed);
-      publish(state, message);
 
       if (isAbort) {
         throw error;
@@ -569,6 +620,10 @@ ${summary}`;
         data: {
           agentId: callId,
           soulDelegate: true,
+          specialist: this.definition.name,
+          delegation_id: delegationId,
+          live_log: liveLog,
+          status: state,
         },
       };
     }

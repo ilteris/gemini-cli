@@ -4096,7 +4096,9 @@ describe('Plans Directory Initialization', () => {
 
     const plansDir = config.storage.getPlansDir();
     // Should NOT create the directory eagerly
-    expect(fs.promises.mkdir).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(fs.promises.mkdir).mock.calls.some(([dir]) => dir === plansDir),
+    ).toBe(false);
     // Should check if it exists
     expect(fs.promises.access).toHaveBeenCalledWith(plansDir);
 
@@ -4114,7 +4116,9 @@ describe('Plans Directory Initialization', () => {
     await config.initialize();
 
     const plansDir = config.storage.getPlansDir();
-    expect(fs.promises.mkdir).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(fs.promises.mkdir).mock.calls.some(([dir]) => dir === plansDir),
+    ).toBe(false);
     expect(fs.promises.access).toHaveBeenCalledWith(plansDir);
 
     const context = config.getWorkspaceContext();

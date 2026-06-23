@@ -318,18 +318,34 @@ export class ProjectRegistry {
       }
 
       try {
-        const candidates = await fs.promises.readdir(baseDir);
+        const candidates = await fs.promises.readdir(baseDir, {
+          withFileTypes: true,
+        });
         for (const candidate of candidates) {
-          const markerPath = path.join(baseDir, candidate, PROJECT_ROOT_FILE);
-          if (fs.existsSync(markerPath)) {
-            const owner = (
-              await fs.promises.readFile(markerPath, 'utf8')
-            ).trim();
-            if (this.normalizePath(owner) === normalizedTarget) {
-              // Found it! Ensure all base dirs have the marker
-              await this.ensureOwnershipMarkers(candidate, normalizedTarget);
-              return candidate;
+          if (!candidate.isDirectory()) {
+            continue;
+          }
+          const markerPath = path.join(
+            baseDir,
+            candidate.name,
+            PROJECT_ROOT_FILE,
+          );
+          let owner: string;
+          try {
+            owner = (await fs.promises.readFile(markerPath, 'utf8')).trim();
+          } catch (error: unknown) {
+            if (
+              isNodeError(error) &&
+              (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+            ) {
+              continue;
             }
+            throw error;
+          }
+          if (this.normalizePath(owner) === normalizedTarget) {
+            // Found it! Ensure all base dirs have the marker
+            await this.ensureOwnershipMarkers(candidate.name, normalizedTarget);
+            return candidate.name;
           }
         }
       } catch (e) {
@@ -367,23 +383,24 @@ export class ProjectRegistry {
       let diskMatch = false;
       for (const baseDir of this.baseDirs) {
         const markerPath = path.join(baseDir, candidate, PROJECT_ROOT_FILE);
-        if (fs.existsSync(markerPath)) {
-          try {
-            const owner = (
-              await fs.promises.readFile(markerPath, 'utf8')
-            ).trim();
-            if (this.normalizePath(owner) === this.normalizePath(projectPath)) {
-              diskMatch = true;
-              break;
-            } else {
-              diskCollision = true;
-              break;
-            }
-          } catch {
-            // If we can't read it, assume it's someone else's to be safe
-            diskCollision = true;
+        try {
+          const owner = (await fs.promises.readFile(markerPath, 'utf8')).trim();
+          if (this.normalizePath(owner) === this.normalizePath(projectPath)) {
+            diskMatch = true;
             break;
           }
+          diskCollision = true;
+          break;
+        } catch (error: unknown) {
+          if (
+            isNodeError(error) &&
+            (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+          ) {
+            continue;
+          }
+          // If we can't read it, assume it's someone else's to be safe.
+          diskCollision = true;
+          break;
         }
       }
 
@@ -433,11 +450,9 @@ export class ProjectRegistry {
     const normalizedProject = this.normalizePath(projectPath);
     for (const baseDir of this.baseDirs) {
       const slugDir = path.join(baseDir, slug);
-      if (!fs.existsSync(slugDir)) {
-        await fs.promises.mkdir(slugDir, { recursive: true });
-      }
+      await fs.promises.mkdir(slugDir, { recursive: true });
       const markerPath = path.join(slugDir, PROJECT_ROOT_FILE);
-      if (fs.existsSync(markerPath)) {
+      try {
         const owner = (await fs.promises.readFile(markerPath, 'utf8')).trim();
         if (this.normalizePath(owner) === normalizedProject) {
           continue;
@@ -448,6 +463,13 @@ export class ProjectRegistry {
           { code: 'EEXIST' },
         );
         throw error;
+      } catch (error: unknown) {
+        if (
+          !isNodeError(error) ||
+          (error.code !== 'ENOENT' && error.code !== 'ENOTDIR')
+        ) {
+          throw error;
+        }
       }
       // Use flag: 'wx' to ensure atomic creation
       try {

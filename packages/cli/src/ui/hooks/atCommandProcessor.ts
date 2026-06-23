@@ -705,7 +705,7 @@ export async function handleAtCommand({
 
   const processedQueryParts: PartListUnion = [{ text: initialQueryText }];
 
-  if (agentParts.length > 0) {
+  if (agentParts.length > 0 && process.env['SOUL_IS_SUBAGENT'] !== '1') {
     const agentNames = agentParts.map((p) => p.content.substring(1));
     const toolsList = agentNames.map((agent) => `'${agent}'`).join(', ');
     const agentNudge = `\n<system_note>\nThe user has explicitly selected the following agent(s): ${agentNames.join(

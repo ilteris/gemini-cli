@@ -143,6 +143,17 @@ describe('ProjectRegistry', () => {
     expect(normalizePath(fs.readFileSync(marker2, 'utf8'))).toBe(projectPath);
   });
 
+  it('skips non-directory entries when scanning base directories', async () => {
+    const projectPath = normalizePath(path.join(tempDir, 'project-x'));
+    fs.writeFileSync(path.join(baseDir1, '.DS_Store'), 'finder metadata');
+
+    const registry = new ProjectRegistry(registryPath, [baseDir1]);
+    await registry.initialize();
+
+    const shortId = await registry.getShortId(projectPath);
+    expect(shortId).toBe('project-x');
+  });
+
   it('handles collisions if a slug is taken on disk by another project', async () => {
     // 1. project-y takes 'gemini' on disk
     const projectY = normalizePath(path.join(tempDir, 'project-y'));

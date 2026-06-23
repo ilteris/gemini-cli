@@ -1489,6 +1489,34 @@ describe('handleAtCommand', () => {
       expect.objectContaining({ text: expectedNudge }),
     );
   });
+
+  it('should not include agent nudge inside a Soul subagent process', async () => {
+    vi.stubEnv('SOUL_IS_SUBAGENT', '1');
+
+    const agentName = 'registry_guardian';
+    mockConfig.getAgentRegistry = vi.fn().mockReturnValue({
+      getDefinition: (name: string) =>
+        name === agentName ? { name } : undefined,
+    });
+
+    const result = await handleAtCommand({
+      query: `ACT AS @${agentName}. TASK: Review the diff.`,
+      config: mockConfig,
+      addItem: mockAddItem,
+      onDebugMessage: mockOnDebugMessage,
+      messageId: 601,
+      signal: abortController.signal,
+    });
+
+    const processedQuery = Array.isArray(result.processedQuery)
+      ? result.processedQuery
+      : [];
+    expect(processedQuery).not.toContainEqual(
+      expect.objectContaining({
+        text: expect.stringContaining('Please use the following tool(s)'),
+      }),
+    );
+  });
 });
 
 describe('escapeAtSymbols', () => {

@@ -634,6 +634,22 @@ export class Scheduler {
     );
     let decision = policyDecision;
     if (hookDecision === 'ask') {
+      if (!this.config.isInteractive()) {
+        this.state.updateStatus(
+          callId,
+          CoreToolCallStatus.Error,
+          createErrorResponse(
+            toolCall.request,
+            new Error(
+              `Tool execution for "${
+                toolCall.tool.displayName || toolCall.tool.name
+              }" requires user confirmation requested by a BeforeTool hook, which is not supported in non-interactive mode.`,
+            ),
+            ToolErrorType.POLICY_VIOLATION,
+          ),
+        );
+        return;
+      }
       decision = PolicyDecision.ASK_USER;
     }
 

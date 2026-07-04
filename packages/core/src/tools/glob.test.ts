@@ -177,6 +177,45 @@ describe('GlobTool', () => {
       );
     }, 30000);
 
+    it('should find files when dir_path is the current workspace as a relative path', async () => {
+      const params: GlobToolParams = { pattern: '*.txt', dir_path: '.' };
+      const invocation = globTool.build(params);
+      const result = await invocation.execute({ abortSignal });
+
+      expect(result.llmContent).toContain('Found 2 file(s)');
+      expect(result.llmContent).toContain(path.join(tempRootDir, 'fileA.txt'));
+      expect(result.llmContent).toContain(path.join(tempRootDir, 'FileB.TXT'));
+    }, 30000);
+
+    it('should find files when dir_path is the current workspace as an absolute path', async () => {
+      const params: GlobToolParams = {
+        pattern: '*.txt',
+        dir_path: tempRootDir,
+      };
+      const invocation = globTool.build(params);
+      const result = await invocation.execute({ abortSignal });
+
+      expect(result.llmContent).toContain('Found 2 file(s)');
+      expect(result.llmContent).toContain(path.join(tempRootDir, 'fileA.txt'));
+      expect(result.llmContent).toContain(path.join(tempRootDir, 'FileB.TXT'));
+    }, 30000);
+
+    it('should find files when dir_path resolves through a symlink to the current workspace', async () => {
+      const linkPath = path.join(tempRootDir, 'current-workspace-link');
+      await fs.symlink(tempRootDir, linkPath, 'dir');
+
+      const params: GlobToolParams = {
+        pattern: '*.txt',
+        dir_path: 'current-workspace-link',
+      };
+      const invocation = globTool.build(params);
+      const result = await invocation.execute({ abortSignal });
+
+      expect(result.llmContent).toContain('Found 2 file(s)');
+      expect(result.llmContent).toContain(path.join(tempRootDir, 'fileA.txt'));
+      expect(result.llmContent).toContain(path.join(tempRootDir, 'FileB.TXT'));
+    }, 30000);
+
     it('should find files using a deep globstar pattern (e.g., **/*.log)', async () => {
       const params: GlobToolParams = { pattern: '**/*.log' };
       const invocation = globTool.build(params);
@@ -264,6 +303,22 @@ describe('GlobTool', () => {
       const params: GlobToolParams = {
         pattern: '*.txt',
         dir_path: tempRootDir,
+      };
+      expect(globTool.validateToolParams(params)).toBeNull();
+    });
+
+    it('should return null for valid parameters with relative dir_path resolving to the current workspace', () => {
+      const params: GlobToolParams = { pattern: '*.txt', dir_path: '.' };
+      expect(globTool.validateToolParams(params)).toBeNull();
+    });
+
+    it('should return null for valid parameters with symlinked dir_path resolving to the current workspace', async () => {
+      const linkPath = path.join(tempRootDir, 'current-workspace-link');
+      await fs.symlink(tempRootDir, linkPath, 'dir');
+
+      const params: GlobToolParams = {
+        pattern: '*.txt',
+        dir_path: 'current-workspace-link',
       };
       expect(globTool.validateToolParams(params)).toBeNull();
     });

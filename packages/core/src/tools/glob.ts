@@ -18,7 +18,11 @@ import {
   type ToolConfirmationOutcome,
   type ExecuteOptions,
 } from './tools.js';
-import { shortenPath, makeRelative } from '../utils/paths.js';
+import {
+  shortenPath,
+  makeRelative,
+  resolveToRealPath,
+} from '../utils/paths.js';
 import { type Config } from '../config/config.js';
 import { DEFAULT_FILE_FILTERING_OPTIONS } from '../config/constants.js';
 import { ToolErrorType } from './tool-error.js';
@@ -112,7 +116,7 @@ class GlobToolInvocation extends BaseToolInvocation<
   getDescription(): string {
     let description = `'${this.params.pattern}'`;
     if (this.params.dir_path) {
-      const searchDir = path.resolve(
+      const searchDir = resolveToolDirPath(
         this.config.getTargetDir(),
         this.params.dir_path || '.',
       );
@@ -156,7 +160,7 @@ class GlobToolInvocation extends BaseToolInvocation<
             },
           };
         }
-        searchDirectories = [searchDirAbsolute];
+        searchDirectories = [resolveToRealPath(searchDirAbsolute)];
       } else {
         // Search across all workspace directories
         searchDirectories = workspaceDirectories;
@@ -317,7 +321,9 @@ export class GlobTool extends BaseDeclarativeTool<GlobToolParams, ToolResult> {
       return validationError;
     }
 
-    const targetDir = searchDirAbsolute || this.config.getTargetDir();
+    const targetDir =
+      resolveToolDirPath(this.config.getTargetDir(), params.dir_path || '.') ||
+      this.config.getTargetDir();
     try {
       if (!fs.existsSync(targetDir)) {
         return `Search path does not exist ${targetDir}`;
@@ -358,4 +364,8 @@ export class GlobTool extends BaseDeclarativeTool<GlobToolParams, ToolResult> {
   override getSchema(modelId?: string) {
     return resolveToolDeclaration(GLOB_DEFINITION, modelId);
   }
+}
+
+function resolveToolDirPath(targetDir: string, dirPath: string): string {
+  return resolveToRealPath(path.resolve(targetDir, dirPath));
 }

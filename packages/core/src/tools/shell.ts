@@ -325,8 +325,12 @@ export class ShellToolInvocation extends BaseToolInvocation<
             const isReadonlyMode = modeConfig.readonly ?? false;
 
             if (isReadonlyMode) {
-              const cwd =
-                this.params.dir_path || this.context.config.getTargetDir();
+              const cwd = this.params.dir_path
+                ? resolveToolDirPath(
+                    this.context.config.getTargetDir(),
+                    this.params.dir_path,
+                  )
+                : this.context.config.getTargetDir();
               proactive.fileSystem = proactive.fileSystem || {
                 read: [],
                 write: [],
@@ -523,7 +527,10 @@ export class ShellToolInvocation extends BaseToolInvocation<
       );
 
       const cwd = this.params.dir_path
-        ? path.resolve(this.context.config.getTargetDir(), this.params.dir_path)
+        ? resolveToolDirPath(
+            this.context.config.getTargetDir(),
+            this.params.dir_path,
+          )
         : this.context.config.getTargetDir();
 
       const validationError = this.context.config.validatePathAccess(cwd);
@@ -1168,4 +1175,8 @@ export class ShellTool extends BaseDeclarativeTool<
     );
     return resolveToolDeclaration(definition, modelId);
   }
+}
+
+function resolveToolDirPath(targetDir: string, dirPath: string): string {
+  return resolveToRealPath(path.resolve(targetDir, dirPath));
 }

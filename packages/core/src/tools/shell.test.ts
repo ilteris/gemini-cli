@@ -286,6 +286,36 @@ describe('ShellTool', () => {
       });
       expect(invocation).toBeDefined();
     });
+
+    it('should return an invocation when dir_path is the current workspace as a relative path', () => {
+      const invocation = shellTool.build({
+        command: 'ls',
+        dir_path: '.',
+      });
+      expect(invocation).toBeDefined();
+    });
+
+    it('should return an invocation when dir_path is the current workspace as an absolute path', () => {
+      const invocation = shellTool.build({
+        command: 'ls',
+        dir_path: tempRootDir,
+      });
+      expect(invocation).toBeDefined();
+    });
+
+    it('should return an invocation when dir_path resolves through a symlink to the current workspace', () => {
+      fs.symlinkSync(
+        tempRootDir,
+        path.join(tempRootDir, 'workspace-link'),
+        'dir',
+      );
+
+      const invocation = shellTool.build({
+        command: 'ls',
+        dir_path: 'workspace-link',
+      });
+      expect(invocation).toBeDefined();
+    });
   });
 
   describe('execute', () => {
@@ -380,7 +410,7 @@ describe('ShellTool', () => {
 
       expect(mockShellExecutionService).toHaveBeenCalledWith(
         expect.stringMatching(/pgrep -g 0 >.*gemini-shell-.*[/\\]pgrep\.tmp/),
-        subdir,
+        fs.realpathSync(subdir),
         expect.any(Function),
         expect.any(AbortSignal),
         false,
@@ -403,7 +433,82 @@ describe('ShellTool', () => {
 
       expect(mockShellExecutionService).toHaveBeenCalledWith(
         expect.stringMatching(/pgrep -g 0 >.*gemini-shell-.*[/\\]pgrep\.tmp/),
-        path.join(tempRootDir, 'subdir'),
+        fs.realpathSync(path.join(tempRootDir, 'subdir')),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        false,
+        expect.objectContaining({
+          pager: 'cat',
+          sanitizationConfig: {},
+          sandboxManager: expect.any(Object),
+        }),
+      );
+    });
+
+    it('should use the current workspace as cwd when dir_path is relative current directory', async () => {
+      const invocation = shellTool.build({
+        command: 'ls',
+        dir_path: '.',
+      });
+      const promise = invocation.execute({ abortSignal: mockAbortSignal });
+      resolveShellExecution();
+      await promise;
+
+      expect(mockShellExecutionService).toHaveBeenCalledWith(
+        expect.stringMatching(/pgrep -g 0 >.*gemini-shell-.*[/\\]pgrep\.tmp/),
+        fs.realpathSync(tempRootDir),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        false,
+        expect.objectContaining({
+          pager: 'cat',
+          sanitizationConfig: {},
+          sandboxManager: expect.any(Object),
+        }),
+      );
+    });
+
+    it('should use the current workspace as cwd when dir_path is absolute current directory', async () => {
+      const invocation = shellTool.build({
+        command: 'ls',
+        dir_path: tempRootDir,
+      });
+      const promise = invocation.execute({ abortSignal: mockAbortSignal });
+      resolveShellExecution();
+      await promise;
+
+      expect(mockShellExecutionService).toHaveBeenCalledWith(
+        expect.stringMatching(/pgrep -g 0 >.*gemini-shell-.*[/\\]pgrep\.tmp/),
+        fs.realpathSync(tempRootDir),
+        expect.any(Function),
+        expect.any(AbortSignal),
+        false,
+        expect.objectContaining({
+          pager: 'cat',
+          sanitizationConfig: {},
+          sandboxManager: expect.any(Object),
+        }),
+      );
+    });
+
+    it('should use the current workspace as cwd when dir_path resolves through a symlink', async () => {
+      fs.symlinkSync(
+        tempRootDir,
+        path.join(tempRootDir, 'workspace-link'),
+        'dir',
+      );
+
+      const invocation = shellTool.build({
+        command: 'ls',
+        dir_path: 'workspace-link',
+      });
+      const promise = invocation.execute({ abortSignal: mockAbortSignal });
+      resolveShellExecution();
+      await promise;
+
+      expect(mockShellExecutionService).toHaveBeenCalledWith(
+        expect.stringMatching(/pgrep -g 0 >.*gemini-shell-.*[/\\]pgrep\.tmp/),
+        fs.realpathSync(tempRootDir),
         expect.any(Function),
         expect.any(AbortSignal),
         false,

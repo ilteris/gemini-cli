@@ -227,6 +227,75 @@ describe('Scheduler Hooks', () => {
     expect(executeFn).not.toHaveBeenCalled();
   });
 
+  it('should error instead of waiting if BeforeTool hook asks in non-interactive mode', async () => {
+    const executeFn = vi.fn();
+    const mockTool = new MockTool({ name: 'mockTool', execute: executeFn });
+
+    const toolRegistry = {
+      getTool: () => mockTool,
+      getAllToolNames: () => ['mockTool'],
+    } as unknown as ToolRegistry;
+
+    const mockMessageBus = createMockMessageBus();
+
+    const mockConfig = createMockConfig({
+      getToolRegistry: () => toolRegistry,
+      getMessageBus: () => mockMessageBus,
+      getApprovalMode: () => ApprovalMode.YOLO,
+      isInteractive: () => false,
+    });
+
+    const hookSystem = new HookSystem(mockConfig);
+
+    (mockConfig as { getHookSystem?: () => HookSystem }).getHookSystem = () =>
+      hookSystem;
+
+    hookSystem.registerHook(
+      {
+        type: HookType.Runtime,
+        name: 'test-ask-hook',
+        action: async () => ({
+          decision: 'ask',
+          reason: 'Hook requested confirmation',
+        }),
+      },
+      HookEventName.BeforeTool,
+    );
+
+    const scheduler = new Scheduler({
+      context: {
+        config: mockConfig,
+        messageBus: mockMessageBus,
+        toolRegistry,
+      } as unknown as AgentLoopContext,
+      getPreferredEditor: () => 'vscode',
+      schedulerId: 'test-scheduler',
+    });
+
+    const request = {
+      callId: '1',
+      name: 'mockTool',
+      args: {},
+      isClientInitiated: false,
+      prompt_id: 'prompt-1',
+    };
+
+    const results = await scheduler.schedule(
+      [request],
+      new AbortController().signal,
+    );
+
+    expect(results.length).toBe(1);
+    const result = results[0];
+    expect(result.status).toBe(CoreToolCallStatus.Error);
+    const erroredCall = result as ErroredToolCall;
+
+    expect(erroredCall.response.error?.message).toContain(
+      'requires user confirmation requested by a BeforeTool hook',
+    );
+    expect(executeFn).not.toHaveBeenCalled();
+  });
+
   it('should update tool input if BeforeTool hook provides modified input', async () => {
     const executeFn = vi.fn().mockResolvedValue({
       llmContent: 'Tool executed',

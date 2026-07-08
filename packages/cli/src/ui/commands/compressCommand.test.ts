@@ -16,14 +16,14 @@ import { promisify } from 'node:util';
 import { createMockCommandContext } from '../../test-utils/mockCommandContext.js';
 import { MessageType } from '../types.js';
 
-// Mock child_process entirely inside the factory (no out-of-scope variables referenced)
-vi.mock('node:child_process', () => {
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
   const mockExecPromise = vi.fn();
   const execMock = vi.fn();
   (execMock as unknown as Record<string | symbol, unknown>)[
     Symbol.for('nodejs.util.promisify.custom')
   ] = mockExecPromise;
-  return { exec: execMock };
+  return { ...actual, exec: execMock };
 });
 
 const execAsync = promisify(exec);

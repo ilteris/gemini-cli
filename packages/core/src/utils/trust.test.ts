@@ -46,6 +46,8 @@ describe('Trust Utility (Core)', () => {
     ideContextStore.clear();
     resetTrustedFoldersForTesting();
     delete process.env['GEMINI_CLI_TRUST_WORKSPACE'];
+    delete process.env['SOUL_PROJECTS_JSON'];
+    delete process.env['SOUL_PROJECTS_PATH'];
   });
 
   afterEach(() => {
@@ -172,6 +174,100 @@ describe('Trust Utility (Core)', () => {
         isFolderTrustEnabled: true,
       });
       expect(result).toEqual({ isTrusted: true, source: 'file' });
+    });
+
+    it('should fall back to Soul PROJECTS.json trusted_paths', () => {
+      const projectRoot = path.join(tempDir, 'project');
+      const trustedRoot = path.join(tempDir, 'trusted');
+      fs.mkdirSync(path.join(trustedRoot, 'nested'), { recursive: true });
+      const trustedFile = path.join(trustedRoot, 'nested', 'file.txt');
+      fs.writeFileSync(trustedFile, '');
+      const projectsPath = path.join(tempDir, 'PROJECTS.json');
+      fs.writeFileSync(
+        projectsPath,
+        JSON.stringify({
+          projects: {
+            demo: {
+              path: projectRoot,
+              companion_paths: [path.join(tempDir, 'reference')],
+              trusted_paths: [trustedRoot],
+            },
+          },
+        }),
+      );
+      process.env['SOUL_PROJECTS_JSON'] = projectsPath;
+
+      const result = checkPathTrust({
+        path: trustedFile,
+        isFolderTrustEnabled: true,
+      });
+
+      expect(result).toEqual({ isTrusted: true, source: 'soul' });
+    });
+
+    it('should not treat Soul project path or companion_paths as trusted by implication', () => {
+      const projectRoot = path.join(tempDir, 'project');
+      const companionRoot = path.join(tempDir, 'reference');
+      fs.mkdirSync(path.join(companionRoot, 'nested'), { recursive: true });
+      const projectsPath = path.join(tempDir, 'PROJECTS.json');
+      fs.writeFileSync(
+        projectsPath,
+        JSON.stringify({
+          projects: {
+            demo: {
+              path: projectRoot,
+              companion_paths: [companionRoot],
+              trusted_paths: [],
+            },
+          },
+        }),
+      );
+      process.env['SOUL_PROJECTS_JSON'] = projectsPath;
+
+      expect(
+        checkPathTrust({
+          path: path.join(projectRoot, 'file.txt'),
+          isFolderTrustEnabled: true,
+        }),
+      ).toEqual({ isTrusted: undefined, source: undefined });
+      expect(
+        checkPathTrust({
+          path: path.join(companionRoot, 'nested', 'file.txt'),
+          isFolderTrustEnabled: true,
+        }),
+      ).toEqual({ isTrusted: undefined, source: undefined });
+    });
+
+    it('should let trustedFolders.json denial override Soul trusted_paths', () => {
+      const trustedRoot = path.join(tempDir, 'trusted');
+      fs.mkdirSync(trustedRoot, { recursive: true });
+      const trustedFile = path.join(trustedRoot, 'file.txt');
+      fs.writeFileSync(trustedFile, '');
+      const projectsPath = path.join(tempDir, 'PROJECTS.json');
+      fs.writeFileSync(
+        projectsPath,
+        JSON.stringify({
+          projects: {
+            demo: {
+              trusted_paths: [trustedRoot],
+            },
+          },
+        }),
+      );
+      fs.writeFileSync(
+        trustedFoldersPath,
+        JSON.stringify({
+          [trustedRoot]: TrustLevel.DO_NOT_TRUST,
+        }),
+      );
+      process.env['SOUL_PROJECTS_JSON'] = projectsPath;
+
+      const result = checkPathTrust({
+        path: trustedFile,
+        isFolderTrustEnabled: true,
+      });
+
+      expect(result).toEqual({ isTrusted: false, source: 'file' });
     });
 
     it('should return undefined trust if no rule matches', () => {

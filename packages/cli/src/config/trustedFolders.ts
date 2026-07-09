@@ -47,7 +47,7 @@ export function isWorkspaceTrusted(
   headlessOptions?: HeadlessModeOptions,
 ): {
   isTrusted: boolean | undefined;
-  source: 'ide' | 'file' | 'env' | undefined;
+  source: 'ide' | 'file' | 'env' | 'soul' | undefined;
 } {
   return checkPathTrust({
     path: workspaceDir,

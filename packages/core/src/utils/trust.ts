@@ -148,7 +148,9 @@ function trustedPathsFromSoulProjectManifest(): string[] {
   }
 
   try {
-    const parsed = JSON.parse(fs.readFileSync(projectsPath, 'utf-8'));
+    const parsed = JSON.parse(
+      fs.readFileSync(projectsPath, 'utf-8'),
+    ) as unknown;
     if (!isRecord(parsed) || !isRecord(parsed['projects'])) {
       return [];
     }

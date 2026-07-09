@@ -59,6 +59,8 @@ describe('Trusted Folders', () => {
     resetTrustedFoldersForTesting();
     vi.clearAllMocks();
     delete process.env['GEMINI_CLI_TRUST_WORKSPACE'];
+    delete process.env['SOUL_PROJECTS_JSON'];
+    delete process.env['SOUL_PROJECTS_PATH'];
   });
 
   afterEach(() => {
@@ -330,6 +332,91 @@ describe('Trusted Folders', () => {
       fs.writeFileSync(trustedFoldersPath, JSON.stringify(config), 'utf-8');
 
       expect(isWorkspaceTrusted(mockSettings, '/projectA/untrusted')).toEqual({
+        isTrusted: false,
+        source: 'file',
+      });
+    });
+
+    it('should return true for a Soul PROJECTS.json trusted_path', () => {
+      const trustedRoot = path.join(tempDir, 'soul-trusted');
+      const workspaceDir = path.join(trustedRoot, 'workspace');
+      fs.mkdirSync(workspaceDir, { recursive: true });
+      const projectsPath = path.join(tempDir, 'PROJECTS.json');
+      fs.writeFileSync(
+        projectsPath,
+        JSON.stringify({
+          projects: {
+            demo: {
+              path: path.join(tempDir, 'project'),
+              companion_paths: [path.join(tempDir, 'companion')],
+              trusted_paths: [trustedRoot],
+            },
+          },
+        }),
+      );
+      process.env['SOUL_PROJECTS_JSON'] = projectsPath;
+
+      expect(isWorkspaceTrusted(mockSettings, workspaceDir)).toEqual({
+        isTrusted: true,
+        source: 'soul',
+      });
+    });
+
+    it('should not trust Soul project path or companion_paths without trusted_paths', () => {
+      const projectRoot = path.join(tempDir, 'project');
+      const companionRoot = path.join(tempDir, 'companion');
+      fs.mkdirSync(projectRoot, { recursive: true });
+      fs.mkdirSync(path.join(companionRoot, 'nested'), { recursive: true });
+      const projectsPath = path.join(tempDir, 'PROJECTS.json');
+      fs.writeFileSync(
+        projectsPath,
+        JSON.stringify({
+          projects: {
+            demo: {
+              path: projectRoot,
+              companion_paths: [companionRoot],
+              trusted_paths: [],
+            },
+          },
+        }),
+      );
+      process.env['SOUL_PROJECTS_JSON'] = projectsPath;
+
+      expect(isWorkspaceTrusted(mockSettings, projectRoot)).toEqual({
+        isTrusted: undefined,
+        source: undefined,
+      });
+      expect(
+        isWorkspaceTrusted(mockSettings, path.join(companionRoot, 'nested')),
+      ).toEqual({
+        isTrusted: undefined,
+        source: undefined,
+      });
+    });
+
+    it('should preserve trustedFolders.json precedence over Soul trusted_paths', () => {
+      const trustedRoot = path.join(tempDir, 'soul-trusted');
+      fs.mkdirSync(trustedRoot, { recursive: true });
+      const projectsPath = path.join(tempDir, 'PROJECTS.json');
+      fs.writeFileSync(
+        projectsPath,
+        JSON.stringify({
+          projects: {
+            demo: {
+              trusted_paths: [trustedRoot],
+            },
+          },
+        }),
+      );
+      fs.writeFileSync(
+        trustedFoldersPath,
+        JSON.stringify({
+          [trustedRoot]: TrustLevel.DO_NOT_TRUST,
+        }),
+      );
+      process.env['SOUL_PROJECTS_JSON'] = projectsPath;
+
+      expect(isWorkspaceTrusted(mockSettings, trustedRoot)).toEqual({
         isTrusted: false,
         source: 'file',
       });

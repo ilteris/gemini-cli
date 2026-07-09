@@ -7,6 +7,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
+import * as os from 'node:os';
 import { lock } from 'proper-lockfile';
 import stripJsonComments from 'strip-json-comments';
 import { Storage } from '../config/storage.js';
@@ -23,7 +24,7 @@ export enum TrustLevel {
 
 export interface TrustResult {
   isTrusted: boolean | undefined;
-  source: 'ide' | 'file' | 'env' | undefined;
+  source: 'ide' | 'file' | 'env' | 'soul' | undefined;
 }
 
 export interface TrustOptions {
@@ -69,9 +70,17 @@ export function checkPathTrust(options: TrustOptions): TrustResult {
   }
 
   const isTrusted = folders.isPathTrusted(options.path);
+  if (isTrusted !== undefined) {
+    return {
+      isTrusted,
+      source: 'file',
+    };
+  }
+
+  const soulTrusted = isPathTrustedBySoulProject(options.path);
   return {
-    isTrusted,
-    source: isTrusted !== undefined ? 'file' : undefined,
+    isTrusted: soulTrusted,
+    source: soulTrusted !== undefined ? 'soul' : undefined,
   };
 }
 
@@ -101,6 +110,85 @@ function parseTrustedFoldersJson(content: string): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function expandHome(location: string): string {
+  if (location === '~') {
+    return process.env['HOME'] ?? location;
+  }
+  if (location.startsWith('~/')) {
+    const home = process.env['HOME'];
+    return home ? path.join(home, location.slice(2)) : location;
+  }
+  return location;
+}
+
+function defaultSoulProjectsPath(): string {
+  return path.join(
+    process.env['HOME'] ?? os.homedir(),
+    'soul-cli',
+    'soul',
+    'config',
+    'PROJECTS.json',
+  );
+}
+
+function getSoulProjectsPath(): string {
+  return (
+    process.env['SOUL_PROJECTS_JSON'] ??
+    process.env['SOUL_PROJECTS_PATH'] ??
+    defaultSoulProjectsPath()
+  );
+}
+
+function trustedPathsFromSoulProjectManifest(): string[] {
+  const projectsPath = getSoulProjectsPath();
+  if (!fs.existsSync(projectsPath)) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(projectsPath, 'utf-8'),
+    ) as unknown;
+    if (!isRecord(parsed) || !isRecord(parsed['projects'])) {
+      return [];
+    }
+    const trustedPaths: string[] = [];
+    for (const project of Object.values(parsed['projects'])) {
+      if (!isRecord(project) || !Array.isArray(project['trusted_paths'])) {
+        continue;
+      }
+      for (const trustedPath of project['trusted_paths']) {
+        if (typeof trustedPath === 'string' && trustedPath.trim()) {
+          trustedPaths.push(trustedPath);
+        }
+      }
+    }
+    return trustedPaths;
+  } catch {
+    return [];
+  }
+}
+
+function isPathTrustedBySoulProject(location: string): boolean | undefined {
+  const trustedPaths = trustedPathsFromSoulProjectManifest();
+  if (trustedPaths.length === 0) {
+    return undefined;
+  }
+
+  const realLocation = getRealPath(location);
+  const normalizedLocation = normalizePath(realLocation);
+
+  for (const trustedPath of trustedPaths) {
+    const expandedTrustedPath = expandHome(trustedPath);
+    const realTrustedPath = getRealPath(path.resolve(expandedTrustedPath));
+    const normalizedTrustedPath = normalizePath(realTrustedPath);
+    if (isSubpath(normalizedTrustedPath, normalizedLocation)) {
+      return true;
+    }
+  }
+  return undefined;
 }
 
 /**

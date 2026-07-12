@@ -126,6 +126,29 @@ export interface ModelConfigServiceConfig {
 }
 
 const MAX_ALIAS_CHAIN_DEPTH = 100;
+const GEMINI_3_MODEL_PATTERN = /^gemini-3(?:[.-]|$)/;
+const SOUL_REASONING_EFFORT_VALUES = new Set([
+  'minimal',
+  'low',
+  'medium',
+  'high',
+]);
+
+type ThinkingLevelValue = NonNullable<
+  NonNullable<GenerateContentConfig['thinkingConfig']>['thinkingLevel']
+>;
+
+function isGemini3ModelName(model: string | undefined): boolean {
+  return GEMINI_3_MODEL_PATTERN.test((model ?? '').toLowerCase());
+}
+
+function getSoulReasoningEffort(): ThinkingLevelValue | undefined {
+  const effort = process.env['SOUL_REASONING_EFFORT']?.trim().toLowerCase();
+  if (!effort || !SOUL_REASONING_EFFORT_VALUES.has(effort)) {
+    return undefined;
+  }
+  return effort as ThinkingLevelValue;
+}
 
 export type ResolvedModelConfig = _ResolvedModelConfig & {
   readonly _brand: unique symbol;
@@ -415,9 +438,37 @@ export class ModelConfigService {
       );
     }
 
+    currentConfig = this.applySoulReasoningEffort(currentConfig, context);
+
     return {
       model: currentConfig.model,
       generateContentConfig: currentConfig.generateContentConfig ?? {},
+    };
+  }
+
+  private applySoulReasoningEffort(
+    config: ModelConfig,
+    context: ModelConfigKey,
+  ): ModelConfig {
+    const thinkingLevel = getSoulReasoningEffort();
+    const model = config.model ?? context.model;
+    if (!thinkingLevel || !isGemini3ModelName(model)) {
+      return config;
+    }
+
+    const generateContentConfig = { ...(config.generateContentConfig ?? {}) };
+    const { thinkingBudget: _thinkingBudget, ...thinkingConfig } =
+      generateContentConfig.thinkingConfig ?? {};
+
+    return {
+      ...config,
+      generateContentConfig: {
+        ...generateContentConfig,
+        thinkingConfig: {
+          ...thinkingConfig,
+          thinkingLevel,
+        },
+      },
     };
   }
 
@@ -473,7 +524,10 @@ export class ModelConfigService {
     }
 
     if (isChatModel) {
-      const fallbackAlias = 'chat-base';
+      const fallbackAlias =
+        isGemini3ModelName(requestedModel) && allAliases['chat-base-3']
+          ? 'chat-base-3'
+          : 'chat-base';
       if (allAliases[fallbackAlias]) {
         const fallbackResolution = this.resolveAliasChain(
           fallbackAlias,

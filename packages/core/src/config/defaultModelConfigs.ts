@@ -45,11 +45,10 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       },
     },
     'chat-base-3': {
-      extends: 'chat-base',
       modelConfig: {
         generateContentConfig: {
           thinkingConfig: {
-            thinkingLevel: ThinkingLevel.HIGH,
+            includeThoughts: true,
           },
         },
       },
@@ -87,6 +86,12 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       extends: 'chat-base-3',
       modelConfig: {
         model: 'gemini-3.1-flash-lite-preview',
+      },
+    },
+    'gemini-3.5-flash': {
+      extends: 'chat-base-3',
+      modelConfig: {
+        model: 'gemini-3.5-flash',
       },
     },
     'gemini-2.5-pro': {
@@ -128,7 +133,6 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       },
     },
     'gemini-3-flash-base': {
-      extends: 'base',
       modelConfig: {
         model: 'gemini-3-flash-preview',
       },
@@ -246,9 +250,6 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
           thinkingConfig: {
             thinkingLevel: ThinkingLevel.HIGH,
           },
-          temperature: 1,
-          topP: 0.95,
-          topK: 64,
         },
       },
     },
@@ -339,6 +340,13 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       isPreview: true,
       isVisible: true,
       features: { thinking: false, multimodalToolUse: true },
+    },
+    'gemini-3.5-flash': {
+      tier: 'flash',
+      family: 'gemini-3',
+      isPreview: false,
+      isVisible: true,
+      features: { thinking: true, multimodalToolUse: true },
     },
     'gemini-2.5-pro': {
       tier: 'pro',
@@ -463,6 +471,9 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
           target: 'gemini-3.1-pro-preview',
         },
       ],
+    },
+    'gemini-3.5-flash': {
+      default: 'gemini-3.5-flash',
     },
     auto: {
       default: 'gemini-3-pro-preview',

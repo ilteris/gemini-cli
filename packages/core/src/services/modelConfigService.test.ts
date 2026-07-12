@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ModelConfigService,
   type ModelConfigAlias,
@@ -791,6 +791,107 @@ describe('ModelConfigService', () => {
 
       expect(resolved.model).toBe('my-custom-model');
       expect(resolved.generateContentConfig).toEqual({});
+    });
+
+    it('should fallback raw Gemini 3 chat models to chat-base-3 when available', () => {
+      const config: ModelConfigServiceConfig = {
+        aliases: {
+          'chat-base': {
+            modelConfig: {
+              generateContentConfig: {
+                temperature: 1,
+                topP: 0.95,
+                topK: 64,
+              },
+            },
+          },
+          'chat-base-3': {
+            modelConfig: {
+              generateContentConfig: {
+                thinkingConfig: {
+                  includeThoughts: true,
+                },
+              },
+            },
+          },
+        },
+      };
+      const service = new ModelConfigService(config);
+      const resolved = service.getResolvedConfig({
+        model: 'gemini-3.5-flash',
+        isChatModel: true,
+      });
+
+      expect(resolved.model).toBe('gemini-3.5-flash');
+      expect(resolved.generateContentConfig).toEqual({
+        thinkingConfig: {
+          includeThoughts: true,
+        },
+      });
+    });
+  });
+
+  describe('Soul reasoning effort override', () => {
+    it('should apply SOUL_REASONING_EFFORT as thinkingLevel for Gemini 3 models', () => {
+      vi.stubEnv('SOUL_REASONING_EFFORT', 'medium');
+      try {
+        const service = new ModelConfigService({
+          aliases: {
+            'gemini-3.5-flash': {
+              modelConfig: {
+                model: 'gemini-3.5-flash',
+                generateContentConfig: {
+                  thinkingConfig: {
+                    includeThoughts: true,
+                    thinkingBudget: 1024,
+                  },
+                },
+              },
+            },
+          },
+        });
+        const resolved = service.getResolvedConfig({
+          model: 'gemini-3.5-flash',
+          isChatModel: true,
+        });
+
+        expect(resolved.generateContentConfig.thinkingConfig).toEqual({
+          includeThoughts: true,
+          thinkingLevel: 'medium',
+        });
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('should ignore SOUL_REASONING_EFFORT for non-Gemini 3 models', () => {
+      vi.stubEnv('SOUL_REASONING_EFFORT', 'high');
+      try {
+        const service = new ModelConfigService({
+          aliases: {
+            'gemini-2.5-flash': {
+              modelConfig: {
+                model: 'gemini-2.5-flash',
+                generateContentConfig: {
+                  thinkingConfig: {
+                    thinkingBudget: 8192,
+                  },
+                },
+              },
+            },
+          },
+        });
+        const resolved = service.getResolvedConfig({
+          model: 'gemini-2.5-flash',
+          isChatModel: true,
+        });
+
+        expect(resolved.generateContentConfig.thinkingConfig).toEqual({
+          thinkingBudget: 8192,
+        });
+      } finally {
+        vi.unstubAllEnvs();
+      }
     });
   });
 

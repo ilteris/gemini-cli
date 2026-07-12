@@ -144,7 +144,14 @@ Directly maps to the SDK's `GenerateContentConfig`. Common parameters include:
 - **`topP`**: (`number`) Nucleus sampling probability.
 - **`maxOutputTokens`**: (`number`) Limit on generated response length.
 - **`thinkingConfig`**: (`object`) Configuration for models with reasoning
-  capabilities (for example, `thinkingBudget`, `includeThoughts`).
+  capabilities (for example, `thinkingLevel`, `thinkingBudget`,
+  `includeThoughts`).
+
+Gemini 3 models use `thinkingConfig.thinkingLevel` (`minimal`, `low`,
+`medium`, or `high`) to control reasoning effort. Gemini 2.5 models use
+`thinkingConfig.thinkingBudget` instead. Do not set both in the same request.
+When Gemini CLI is launched by Soul, `SOUL_REASONING_EFFORT` can set the
+Gemini 3 thinking level without changing persistent `modelConfigs`.
 
 ## 5. Practical Examples
 

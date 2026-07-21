@@ -18,6 +18,7 @@ import { AcpSessionManager } from './acpSessionManager.js';
 import type * as acp from '@agentclientprotocol/sdk';
 import {
   AuthType,
+  DEFAULT_GEMINI_FLASH_MODEL,
   type Config,
   GEMINI_MODEL_ALIAS_AUTO,
   type MessageBus,
@@ -216,7 +217,7 @@ describe('AcpSessionManager', () => {
     );
   });
 
-  it('should include gemini-3.1-flash-lite when useGemini31FlashLite is true', async () => {
+  it('should include Gemini 3.6 Flash and Flash-Lite when modern Flash models are available', async () => {
     mockConfig.getContentGeneratorConfig = vi.fn().mockReturnValue({
       apiKey: 'test-key',
     });
@@ -235,8 +236,12 @@ describe('AcpSessionManager', () => {
     expect(response.models?.availableModels).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          modelId: 'gemini-3.1-flash-lite-preview',
-          name: 'gemini-3.1-flash-lite-preview',
+          modelId: DEFAULT_GEMINI_FLASH_MODEL,
+          name: DEFAULT_GEMINI_FLASH_MODEL,
+        }),
+        expect.objectContaining({
+          modelId: 'gemini-3.5-flash-lite',
+          name: 'gemini-3.5-flash-lite',
         }),
       ]),
     );

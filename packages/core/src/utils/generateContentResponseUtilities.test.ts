@@ -209,7 +209,7 @@ describe('generateContentResponseUtilities', () => {
       }
     });
 
-    it('should handle llmContent with fileData for Gemini 3 model (should be siblings)', () => {
+    it('should handle llmContent with fileData for Gemini 3 model (should be nested)', () => {
       const llmContent: Part = {
         fileData: { mimeType: 'application/pdf', fileUri: 'gs://...' },
       };
@@ -225,9 +225,13 @@ describe('generateContentResponseUtilities', () => {
             name: toolName,
             id: callId,
             response: { output: 'Binary content provided (1 item(s)).' },
+            parts: [
+              {
+                fileData: { mimeType: 'application/pdf', fileUri: 'gs://...' },
+              },
+            ],
           },
         },
-        llmContent,
       ]);
     });
 
@@ -248,6 +252,59 @@ describe('generateContentResponseUtilities', () => {
             id: callId,
             response: { output: 'Binary content provided (1 item(s)).' },
             parts: [llmContent],
+          },
+        },
+      ]);
+    });
+
+    it('should nest inlineData and fileData together for Gemini 3 multimodal function responses', () => {
+      const llmContent: PartListUnion = [
+        { text: 'Here is the matching item.' },
+        {
+          inlineData: {
+            mimeType: 'image/png',
+            data: 'base64...',
+            displayName: 'preview.png',
+          },
+        },
+        {
+          fileData: {
+            mimeType: 'image/jpeg',
+            fileUri: 'gs://bucket/full.jpg',
+            displayName: 'full.jpg',
+          },
+        },
+      ];
+
+      const result = convertToFunctionResponse(
+        toolName,
+        callId,
+        llmContent,
+        'gemini-3.5-flash-lite',
+      );
+
+      expect(result).toEqual([
+        {
+          functionResponse: {
+            name: toolName,
+            id: callId,
+            response: { output: 'Here is the matching item.' },
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'image/png',
+                  data: 'base64...',
+                  displayName: 'preview.png',
+                },
+              },
+              {
+                fileData: {
+                  mimeType: 'image/jpeg',
+                  fileUri: 'gs://bucket/full.jpg',
+                  displayName: 'full.jpg',
+                },
+              },
+            ],
           },
         },
       ]);

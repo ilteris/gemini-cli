@@ -5,6 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
+import { ThinkingLevel } from '@google/genai';
 import {
   ModelConfigService,
   type ModelConfigAlias,
@@ -829,6 +830,58 @@ describe('ModelConfigService', () => {
         },
       });
     });
+
+    it('should strip deprecated sampling parameters from Gemini 3 model configs', () => {
+      const config: ModelConfigServiceConfig = {
+        aliases: {
+          base: {
+            modelConfig: {
+              generateContentConfig: {
+                temperature: 0.2,
+                topP: 0.9,
+                topK: 40,
+                candidateCount: 2,
+              },
+            },
+          },
+          'gemini-3.6-flash': {
+            extends: 'base',
+            modelConfig: {
+              model: 'gemini-3.6-flash',
+              generateContentConfig: {
+                thinkingConfig: {
+                  includeThoughts: true,
+                  thinkingBudget: 1024,
+                },
+              },
+            },
+          },
+        },
+        overrides: [
+          {
+            match: { model: 'gemini-3.6-flash' },
+            modelConfig: {
+              generateContentConfig: {
+                temperature: 0.7,
+                topP: 0.8,
+                topK: 20,
+              },
+            },
+          },
+        ],
+      };
+      const service = new ModelConfigService(config);
+      const resolved = service.getResolvedConfig({
+        model: 'gemini-3.6-flash',
+        isChatModel: true,
+      });
+
+      expect(resolved.generateContentConfig).toEqual({
+        thinkingConfig: {
+          includeThoughts: true,
+        },
+      });
+    });
   });
 
   describe('Soul reasoning effort override', () => {
@@ -857,7 +910,7 @@ describe('ModelConfigService', () => {
 
         expect(resolved.generateContentConfig.thinkingConfig).toEqual({
           includeThoughts: true,
-          thinkingLevel: 'medium',
+          thinkingLevel: ThinkingLevel.MEDIUM,
         });
       } finally {
         vi.unstubAllEnvs();

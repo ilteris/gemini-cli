@@ -69,6 +69,7 @@ import {
   DEFAULT_GEMINI_MODEL_AUTO,
   PREVIEW_GEMINI_MODEL_AUTO,
   PREVIEW_GEMINI_FLASH_MODEL,
+  DEFAULT_GEMINI_FLASH_MODEL,
 } from './models.js';
 import { Storage } from './storage.js';
 import type { AgentLoopContext } from './agent-loop-context.js';
@@ -272,6 +273,7 @@ vi.mock('../code_assist/experiments/experiments.js');
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe('Server Config (config.ts)', () => {
@@ -399,6 +401,7 @@ describe('Server Config (config.ts)', () => {
       experimentIds: [],
       flags: {},
     });
+    vi.stubEnv('SOUL_IS_SUBAGENT', '');
   });
 
   describe('initialize', () => {
@@ -3216,7 +3219,7 @@ describe('Config Quota & Preview Model Access', () => {
             remainingFraction: 0.2,
           },
           {
-            modelId: 'gemini-2.5-flash',
+            modelId: DEFAULT_GEMINI_FLASH_MODEL,
             remainingAmount: '80',
             remainingFraction: 0.8,
           },
@@ -3347,7 +3350,7 @@ describe('Config Quota & Preview Model Access', () => {
             remainingFraction: 0.2,
           },
           {
-            modelId: 'gemini-2.5-flash',
+            modelId: DEFAULT_GEMINI_FLASH_MODEL,
             remainingAmount: '80',
             remainingFraction: 0.8,
           },

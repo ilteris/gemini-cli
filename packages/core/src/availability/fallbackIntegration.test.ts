@@ -8,8 +8,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { applyModelSelection } from './policyHelpers.js';
 import type { Config } from '../config/config.js';
 import {
+  DEFAULT_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_MODEL,
-  PREVIEW_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_MODEL_AUTO,
 } from '../config/models.js';
 import { ModelAvailabilityService } from './modelAvailabilityService.js';
@@ -41,7 +41,7 @@ describe('Fallback Integration', () => {
 
   it('should select fallback model when primary model is terminal and config is in AUTO mode', () => {
     // 1. Simulate "Pro" failing with a terminal quota error
-    // The policy chain for PREVIEW_GEMINI_MODEL_AUTO is [PREVIEW_GEMINI_MODEL, PREVIEW_GEMINI_FLASH_MODEL]
+    // The policy chain for PREVIEW_GEMINI_MODEL_AUTO is [PREVIEW_GEMINI_MODEL, DEFAULT_GEMINI_FLASH_MODEL]
     availabilityService.markTerminal(PREVIEW_GEMINI_MODEL, 'quota');
 
     // 2. Request "Pro" explicitly (as Agent would)
@@ -54,11 +54,11 @@ describe('Fallback Integration', () => {
     });
 
     // 4. Expect fallback to Flash
-    expect(result.model).toBe(PREVIEW_GEMINI_FLASH_MODEL);
+    expect(result.model).toBe(DEFAULT_GEMINI_FLASH_MODEL);
 
     // 5. Expect active model to be updated
     expect(config.setActiveModel).toHaveBeenCalledWith(
-      PREVIEW_GEMINI_FLASH_MODEL,
+      DEFAULT_GEMINI_FLASH_MODEL,
     );
   });
 
@@ -76,7 +76,7 @@ describe('Fallback Integration', () => {
     const result = applyModelSelection(config, { model: requestedModel });
 
     // 5. Expect it to fallback to Flash (because Gemini 3 uses PREVIEW_CHAIN)
-    expect(result.model).toBe(PREVIEW_GEMINI_FLASH_MODEL);
+    expect(result.model).toBe(DEFAULT_GEMINI_FLASH_MODEL);
   });
 
   it('should fallback to Flash after failures and restore Pro on next turn', () => {
@@ -99,7 +99,7 @@ describe('Fallback Integration', () => {
       model: requestedModel,
       isChatModel: true,
     });
-    expect(result2.model).toBe(PREVIEW_GEMINI_FLASH_MODEL);
+    expect(result2.model).toBe(DEFAULT_GEMINI_FLASH_MODEL);
 
     // 4. Reset turn (start of new interaction)
     availabilityService.resetTurn();

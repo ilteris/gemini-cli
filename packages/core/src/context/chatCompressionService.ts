@@ -111,9 +111,13 @@ export function modelStringToModelConfigAlias(model: string): string {
     case DEFAULT_GEMINI_MODEL:
       return 'chat-compression-2.5-pro';
     case DEFAULT_GEMINI_FLASH_MODEL:
+      return 'chat-compression-3.6-flash';
+    case 'gemini-2.5-flash':
       return 'chat-compression-2.5-flash';
-    case DEFAULT_GEMINI_FLASH_LITE_MODEL:
+    case 'gemini-2.5-flash-lite':
       return 'chat-compression-2.5-flash-lite';
+    case DEFAULT_GEMINI_FLASH_LITE_MODEL:
+      return 'chat-compression-3.5-flash-lite';
     default:
       return 'chat-compression-default';
   }

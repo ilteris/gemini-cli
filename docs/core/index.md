@@ -73,9 +73,10 @@ If you are using the default "pro" model and the CLI detects that you are being
 rate-limited, it automatically switches to the "flash" model for the current
 session. This lets you continue working without interruption.
 
-Internal utility calls that use `gemini-2.5-flash-lite` (for example, prompt
-completion and classification) silently fall back to `gemini-2.5-flash` and
-`gemini-2.5-pro` when quota is exhausted, without changing the configured model.
+Internal utility calls use `gemini-3.6-flash` by default for fast routing,
+classification, and prompt-completion paths. If quota is exhausted, model
+availability policies can silently use the next compatible fallback without
+changing the configured model.
 
 ## File discovery service
 

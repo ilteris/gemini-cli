@@ -7,6 +7,7 @@
 import type {
   GenerateContentResponse,
   Part,
+  FunctionResponsePart,
   FunctionCall,
   PartListUnion,
 } from '@google/genai';
@@ -44,6 +45,28 @@ function toParts(input: PartListUnion): Part[] {
     }
   }
   return parts;
+}
+
+function toFunctionResponsePart(part: Part): FunctionResponsePart | undefined {
+  if (part.inlineData) {
+    return {
+      inlineData: {
+        data: part.inlineData.data,
+        mimeType: part.inlineData.mimeType,
+        displayName: part.inlineData.displayName,
+      },
+    };
+  }
+  if (part.fileData) {
+    return {
+      fileData: {
+        fileUri: part.fileData.fileUri,
+        mimeType: part.fileData.mimeType,
+        displayName: part.fileData.displayName,
+      },
+    };
+  }
+  return undefined;
 }
 
 export function convertToFunctionResponse(
@@ -152,15 +175,19 @@ export function convertToFunctionResponse(
     model,
     config,
   );
-  const siblingParts: Part[] = [...fileDataParts];
+  const siblingParts: Part[] = [];
+  const multimodalParts = [...filteredInlineDataParts, ...fileDataParts];
 
-  if (filteredInlineDataParts.length > 0) {
+  if (multimodalParts.length > 0) {
     if (isMultimodalFRSupported) {
-      // Nest inlineData if supported by the model
-      Object.assign(part.functionResponse!, { parts: filteredInlineDataParts });
+      Object.assign(part.functionResponse!, {
+        parts: multimodalParts
+          .map(toFunctionResponsePart)
+          .filter((p): p is FunctionResponsePart => p !== undefined),
+      });
     } else {
       // Otherwise treat as siblings
-      siblingParts.push(...filteredInlineDataParts);
+      siblingParts.push(...multimodalParts);
     }
   }
 

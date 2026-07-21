@@ -529,11 +529,10 @@ their corresponding top-level category object in your `settings.json` file.
         }
       },
       "chat-base-3": {
-        "extends": "chat-base",
         "modelConfig": {
           "generateContentConfig": {
             "thinkingConfig": {
-              "thinkingLevel": "HIGH"
+              "includeThoughts": true
             }
           }
         }
@@ -566,6 +565,24 @@ their corresponding top-level category object in your `settings.json` file.
         "extends": "chat-base-3",
         "modelConfig": {
           "model": "gemini-3.1-flash-lite-preview"
+        }
+      },
+      "gemini-3.6-flash": {
+        "extends": "chat-base-3",
+        "modelConfig": {
+          "model": "gemini-3.6-flash"
+        }
+      },
+      "gemini-3.5-flash-lite": {
+        "extends": "chat-base-3",
+        "modelConfig": {
+          "model": "gemini-3.5-flash-lite"
+        }
+      },
+      "gemini-3.5-flash": {
+        "extends": "chat-base-3",
+        "modelConfig": {
+          "model": "gemini-3.5-flash"
         }
       },
       "gemini-2.5-pro": {
@@ -605,19 +622,18 @@ their corresponding top-level category object in your `settings.json` file.
         }
       },
       "gemini-3-flash-base": {
-        "extends": "base",
         "modelConfig": {
-          "model": "gemini-3-flash-preview"
+          "model": "gemini-3.6-flash"
         }
       },
       "classifier": {
         "extends": "base",
         "modelConfig": {
-          "model": "gemini-2.5-flash-lite",
+          "model": "gemini-3.6-flash",
           "generateContentConfig": {
             "maxOutputTokens": 1024,
             "thinkingConfig": {
-              "thinkingBudget": 512
+              "thinkingLevel": "MEDIUM"
             }
           }
         }
@@ -625,12 +641,12 @@ their corresponding top-level category object in your `settings.json` file.
       "prompt-completion": {
         "extends": "base",
         "modelConfig": {
-          "model": "gemini-2.5-flash-lite",
+          "model": "gemini-3.6-flash",
           "generateContentConfig": {
             "temperature": 0.3,
             "maxOutputTokens": 16000,
             "thinkingConfig": {
-              "thinkingBudget": 0
+              "thinkingLevel": "MEDIUM"
             }
           }
         }
@@ -638,12 +654,12 @@ their corresponding top-level category object in your `settings.json` file.
       "fast-ack-helper": {
         "extends": "base",
         "modelConfig": {
-          "model": "gemini-2.5-flash-lite",
+          "model": "gemini-3.6-flash",
           "generateContentConfig": {
             "temperature": 0.2,
             "maxOutputTokens": 120,
             "thinkingConfig": {
-              "thinkingBudget": 0
+              "thinkingLevel": "MEDIUM"
             }
           }
         }
@@ -651,10 +667,10 @@ their corresponding top-level category object in your `settings.json` file.
       "edit-corrector": {
         "extends": "base",
         "modelConfig": {
-          "model": "gemini-2.5-flash-lite",
+          "model": "gemini-3.6-flash",
           "generateContentConfig": {
             "thinkingConfig": {
-              "thinkingBudget": 0
+              "thinkingLevel": "MEDIUM"
             }
           }
         }
@@ -662,18 +678,24 @@ their corresponding top-level category object in your `settings.json` file.
       "summarizer-default": {
         "extends": "base",
         "modelConfig": {
-          "model": "gemini-2.5-flash-lite",
+          "model": "gemini-3.6-flash",
           "generateContentConfig": {
-            "maxOutputTokens": 2000
+            "maxOutputTokens": 2000,
+            "thinkingConfig": {
+              "thinkingLevel": "MEDIUM"
+            }
           }
         }
       },
       "summarizer-shell": {
         "extends": "base",
         "modelConfig": {
-          "model": "gemini-2.5-flash-lite",
+          "model": "gemini-3.6-flash",
           "generateContentConfig": {
-            "maxOutputTokens": 2000
+            "maxOutputTokens": 2000,
+            "thinkingConfig": {
+              "thinkingLevel": "MEDIUM"
+            }
           }
         }
       },
@@ -729,10 +751,7 @@ their corresponding top-level category object in your `settings.json` file.
           "generateContentConfig": {
             "thinkingConfig": {
               "thinkingLevel": "HIGH"
-            },
-            "temperature": 1,
-            "topP": 0.95,
-            "topK": 64
+            }
           }
         }
       },
@@ -746,9 +765,19 @@ their corresponding top-level category object in your `settings.json` file.
           "model": "gemini-3-flash-preview"
         }
       },
+      "chat-compression-3.6-flash": {
+        "modelConfig": {
+          "model": "gemini-3.6-flash"
+        }
+      },
       "chat-compression-3.1-flash-lite": {
         "modelConfig": {
           "model": "gemini-3.1-flash-lite-preview"
+        }
+      },
+      "chat-compression-3.5-flash-lite": {
+        "modelConfig": {
+          "model": "gemini-3.5-flash-lite"
         }
       },
       "chat-compression-2.5-pro": {
@@ -773,7 +802,7 @@ their corresponding top-level category object in your `settings.json` file.
       },
       "agent-history-provider-summarizer": {
         "modelConfig": {
-          "model": "gemini-3-flash-preview"
+          "model": "gemini-3.6-flash"
         }
       }
     }
@@ -809,6 +838,26 @@ their corresponding top-level category object in your `settings.json` file.
         "isVisible": true,
         "features": {
           "thinking": false,
+          "multimodalToolUse": true
+        }
+      },
+      "gemini-3.5-flash-lite": {
+        "tier": "flash-lite",
+        "family": "gemini-3",
+        "isPreview": false,
+        "isVisible": true,
+        "features": {
+          "thinking": true,
+          "multimodalToolUse": true
+        }
+      },
+      "gemini-3.6-flash": {
+        "tier": "flash",
+        "family": "gemini-3",
+        "isPreview": false,
+        "isVisible": true,
+        "features": {
+          "thinking": true,
           "multimodalToolUse": true
         }
       },
@@ -849,6 +898,16 @@ their corresponding top-level category object in your `settings.json` file.
         "isVisible": true,
         "features": {
           "thinking": false,
+          "multimodalToolUse": true
+        }
+      },
+      "gemini-3.5-flash": {
+        "tier": "flash",
+        "family": "gemini-3",
+        "isPreview": false,
+        "isVisible": true,
+        "features": {
+          "thinking": true,
           "multimodalToolUse": true
         }
       },
@@ -937,8 +996,8 @@ their corresponding top-level category object in your `settings.json` file.
         "isPreview": false,
         "isVisible": false,
         "features": {
-          "thinking": false,
-          "multimodalToolUse": false
+          "thinking": true,
+          "multimodalToolUse": true
         }
       },
       "auto-gemini-3": {
@@ -1006,7 +1065,7 @@ their corresponding top-level category object in your `settings.json` file.
             "condition": {
               "hasAccessToPreview": false
             },
-            "target": "gemini-2.5-flash"
+            "target": "gemini-3.6-flash"
           }
         ]
       },
@@ -1033,6 +1092,15 @@ their corresponding top-level category object in your `settings.json` file.
             "target": "gemini-3.1-pro-preview"
           }
         ]
+      },
+      "gemini-3.5-flash": {
+        "default": "gemini-3.5-flash"
+      },
+      "gemini-3.6-flash": {
+        "default": "gemini-3.6-flash"
+      },
+      "gemini-3.5-flash-lite": {
+        "default": "gemini-3.5-flash-lite"
       },
       "auto": {
         "default": "gemini-3-pro-preview",
@@ -1089,31 +1157,15 @@ their corresponding top-level category object in your `settings.json` file.
             "condition": {
               "useGemini3_1FlashLite": false
             },
-            "target": "gemini-2.5-flash-lite"
+            "target": "gemini-3.5-flash-lite"
           }
         ]
       },
       "flash": {
-        "default": "gemini-3-flash-preview",
-        "contexts": [
-          {
-            "condition": {
-              "hasAccessToPreview": false
-            },
-            "target": "gemini-2.5-flash"
-          }
-        ]
+        "default": "gemini-3.6-flash"
       },
       "flash-lite": {
-        "default": "gemini-2.5-flash-lite",
-        "contexts": [
-          {
-            "condition": {
-              "useGemini3_1FlashLite": true
-            },
-            "target": "gemini-3.1-flash-lite-preview"
-          }
-        ]
+        "default": "gemini-3.5-flash-lite"
       },
       "auto-gemini-3": {
         "default": "gemini-3-pro-preview",
@@ -1155,21 +1207,7 @@ their corresponding top-level category object in your `settings.json` file.
     ```json
     {
       "flash": {
-        "default": "gemini-3-flash-preview",
-        "contexts": [
-          {
-            "condition": {
-              "hasAccessToPreview": false
-            },
-            "target": "gemini-2.5-flash"
-          },
-          {
-            "condition": {
-              "requestedModels": ["gemini-2.5-pro", "auto-gemini-2.5"]
-            },
-            "target": "gemini-2.5-flash"
-          }
-        ]
+        "default": "gemini-3.6-flash"
       },
       "pro": {
         "default": "gemini-3-pro-preview",
@@ -1230,7 +1268,7 @@ their corresponding top-level category object in your `settings.json` file.
           }
         },
         {
-          "model": "gemini-3-flash-preview",
+          "model": "gemini-3.6-flash",
           "isLastResort": true,
           "maxAttempts": 10,
           "actions": {
@@ -1265,7 +1303,7 @@ their corresponding top-level category object in your `settings.json` file.
           }
         },
         {
-          "model": "gemini-3-flash-preview",
+          "model": "gemini-3.6-flash",
           "isLastResort": true,
           "maxAttempts": 10,
           "actions": {
@@ -1299,7 +1337,7 @@ their corresponding top-level category object in your `settings.json` file.
           }
         },
         {
-          "model": "gemini-2.5-flash",
+          "model": "gemini-3.6-flash",
           "isLastResort": true,
           "maxAttempts": 10,
           "actions": {
@@ -1334,7 +1372,7 @@ their corresponding top-level category object in your `settings.json` file.
           }
         },
         {
-          "model": "gemini-2.5-flash",
+          "model": "gemini-3.6-flash",
           "isLastResort": true,
           "maxAttempts": 10,
           "actions": {
@@ -1353,7 +1391,7 @@ their corresponding top-level category object in your `settings.json` file.
       ],
       "lite": [
         {
-          "model": "gemini-2.5-flash-lite",
+          "model": "gemini-3.5-flash-lite",
           "actions": {
             "terminal": "silent",
             "transient": "silent",
@@ -1368,7 +1406,7 @@ their corresponding top-level category object in your `settings.json` file.
           }
         },
         {
-          "model": "gemini-2.5-flash",
+          "model": "gemini-3.6-flash",
           "actions": {
             "terminal": "silent",
             "transient": "silent",
@@ -2338,8 +2376,8 @@ the `advanced.excludedEnvVars` setting in your `settings.json` file.
 - **`GEMINI_MODEL`**:
   - Specifies the default Gemini model to use.
   - Overrides the hardcoded default
-  - Example: `export GEMINI_MODEL="gemini-3-flash-preview"` (Windows PowerShell:
-    `$env:GEMINI_MODEL="gemini-3-flash-preview"`)
+  - Example: `export GEMINI_MODEL="gemini-3.6-flash"` (Windows PowerShell:
+    `$env:GEMINI_MODEL="gemini-3.6-flash"`)
 - **`GEMINI_CLI_TRUST_WORKSPACE`**:
   - If set to `"true"`, trusts the current workspace for the duration of the
     session, bypassing the folder trust check.

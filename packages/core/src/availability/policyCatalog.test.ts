@@ -11,6 +11,7 @@ import {
   validateModelPolicyChain,
 } from './policyCatalog.js';
 import {
+  DEFAULT_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_MODEL,
   PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL,
   PREVIEW_GEMINI_3_1_MODEL,
@@ -32,7 +33,7 @@ describe('policyCatalog', () => {
     });
     expect(chain[0]?.model).toBe(PREVIEW_GEMINI_3_1_MODEL);
     expect(chain).toHaveLength(2);
-    expect(chain[1]?.model).toBe('gemini-3-flash-preview');
+    expect(chain[1]?.model).toBe(DEFAULT_GEMINI_FLASH_MODEL);
   });
 
   it('returns Gemini 3.1 Custom Tools chain when useGemini31 and useCustomToolModel are true', () => {
@@ -44,7 +45,7 @@ describe('policyCatalog', () => {
     });
     expect(chain[0]?.model).toBe(PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL);
     expect(chain).toHaveLength(2);
-    expect(chain[1]?.model).toBe('gemini-3-flash-preview');
+    expect(chain[1]?.model).toBe(DEFAULT_GEMINI_FLASH_MODEL);
   });
 
   it('returns default chain when preview disabled', () => {

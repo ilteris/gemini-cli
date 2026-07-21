@@ -23,7 +23,6 @@ import {
   DEFAULT_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_MODEL,
   DEFAULT_GEMINI_MODEL_AUTO,
-  PREVIEW_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_MODEL,
   PREVIEW_GEMINI_MODEL_AUTO,
 } from '../config/models.js';
@@ -225,7 +224,7 @@ describe('handleFallback', () => {
 
     it('successfully follows expected availability response for Preview Chain', async () => {
       availability.selectFirstAvailable = vi.fn().mockReturnValue({
-        selectedModel: PREVIEW_GEMINI_FLASH_MODEL,
+        selectedModel: DEFAULT_GEMINI_FLASH_MODEL,
         skipped: [],
       });
       policyHandler.mockResolvedValue('retry_once');
@@ -245,7 +244,7 @@ describe('handleFallback', () => {
 
       expect(result).toBe(true);
       expect(availability.selectFirstAvailable).toHaveBeenCalledWith([
-        PREVIEW_GEMINI_FLASH_MODEL,
+        DEFAULT_GEMINI_FLASH_MODEL,
       ]);
     });
 

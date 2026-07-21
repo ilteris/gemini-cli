@@ -88,7 +88,7 @@ You can run the review tool in two ways:
     **Note on Models:** By default, the script uses the latest Pro model
     (`gemini-3.1-pro-preview`). If you do not have enough Pro quota, you can run
     it with the latest Flash model instead:
-    `./scripts/review.sh <PR_NUMBER> gemini-3-flash-preview`.
+    `./scripts/review.sh <PR_NUMBER> gemini-3.6-flash`.
 
 2.  **Manually from within Gemini CLI:** If you already have the PR checked out
     and built, you can run the tool directly from the CLI prompt:

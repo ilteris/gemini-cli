@@ -20,11 +20,11 @@
 #
 # Options:
 #   --payload <file>  Path to the JSON request payload.
-#   --model <id>      The Gemini model ID (e.g., gemini-3-flash-preview).
+#   --model <id>      The Gemini model ID (e.g., gemini-3.6-flash).
 #   --stream          (Optional) Use the streaming API endpoint. Defaults to non-streaming.
 #
 # Example:
-#   ./scripts/send_gemini_request.sh --payload gcli-request.json --model gemini-3-flash-preview
+#   ./scripts/send_gemini_request.sh --payload gcli-request.json --model gemini-3.6-flash
 # -----------------------------------------------------------------------------
 
 set -e -E

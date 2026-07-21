@@ -20,7 +20,7 @@ import fs from 'node:fs';
  * Main execution logic.
  */
 async function main() {
-  const modelList = process.env.MODEL_LIST || 'gemini-3-flash-preview';
+  const modelList = process.env.MODEL_LIST || 'gemini-3.6-flash';
   const models = modelList.split(',').map((m) => m.trim());
 
   let combinedReport = '';

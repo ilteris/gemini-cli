@@ -932,6 +932,7 @@ describe('createContentGenerator', () => {
       models: {},
     } as unknown as GoogleGenAI;
     vi.mocked(GoogleGenAI).mockImplementation(() => mockGenerator as never);
+    vi.stubEnv('GOOGLE_API_KEY', '');
     vi.stubEnv('GOOGLE_VERTEX_BASE_URL', 'https://vertex.test.local');
     vi.stubEnv('GOOGLE_CLOUD_PROJECT', 'my-project');
     vi.stubEnv('GOOGLE_CLOUD_LOCATION', 'us-central1');

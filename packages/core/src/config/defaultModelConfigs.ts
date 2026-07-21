@@ -88,6 +88,18 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         model: 'gemini-3.1-flash-lite-preview',
       },
     },
+    'gemini-3.6-flash': {
+      extends: 'chat-base-3',
+      modelConfig: {
+        model: 'gemini-3.6-flash',
+      },
+    },
+    'gemini-3.5-flash-lite': {
+      extends: 'chat-base-3',
+      modelConfig: {
+        model: 'gemini-3.5-flash-lite',
+      },
+    },
     'gemini-3.5-flash': {
       extends: 'chat-base-3',
       modelConfig: {
@@ -134,17 +146,17 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
     },
     'gemini-3-flash-base': {
       modelConfig: {
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.6-flash',
       },
     },
     classifier: {
       extends: 'base',
       modelConfig: {
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-3.6-flash',
         generateContentConfig: {
           maxOutputTokens: 1024,
           thinkingConfig: {
-            thinkingBudget: 512,
+            thinkingLevel: ThinkingLevel.MEDIUM,
           },
         },
       },
@@ -152,12 +164,12 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
     'prompt-completion': {
       extends: 'base',
       modelConfig: {
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-3.6-flash',
         generateContentConfig: {
           temperature: 0.3,
           maxOutputTokens: 16000,
           thinkingConfig: {
-            thinkingBudget: 0,
+            thinkingLevel: ThinkingLevel.MEDIUM,
           },
         },
       },
@@ -165,12 +177,12 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
     'fast-ack-helper': {
       extends: 'base',
       modelConfig: {
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-3.6-flash',
         generateContentConfig: {
           temperature: 0.2,
           maxOutputTokens: 120,
           thinkingConfig: {
-            thinkingBudget: 0,
+            thinkingLevel: ThinkingLevel.MEDIUM,
           },
         },
       },
@@ -178,10 +190,10 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
     'edit-corrector': {
       extends: 'base',
       modelConfig: {
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-3.6-flash',
         generateContentConfig: {
           thinkingConfig: {
-            thinkingBudget: 0,
+            thinkingLevel: ThinkingLevel.MEDIUM,
           },
         },
       },
@@ -189,18 +201,24 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
     'summarizer-default': {
       extends: 'base',
       modelConfig: {
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-3.6-flash',
         generateContentConfig: {
           maxOutputTokens: 2000,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MEDIUM,
+          },
         },
       },
     },
     'summarizer-shell': {
       extends: 'base',
       modelConfig: {
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-3.6-flash',
         generateContentConfig: {
           maxOutputTokens: 2000,
+          thinkingConfig: {
+            thinkingLevel: ThinkingLevel.MEDIUM,
+          },
         },
       },
     },
@@ -263,9 +281,19 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         model: 'gemini-3-flash-preview',
       },
     },
+    'chat-compression-3.6-flash': {
+      modelConfig: {
+        model: 'gemini-3.6-flash',
+      },
+    },
     'chat-compression-3.1-flash-lite': {
       modelConfig: {
         model: 'gemini-3.1-flash-lite-preview',
+      },
+    },
+    'chat-compression-3.5-flash-lite': {
+      modelConfig: {
+        model: 'gemini-3.5-flash-lite',
       },
     },
     'chat-compression-2.5-pro': {
@@ -290,7 +318,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
     },
     'agent-history-provider-summarizer': {
       modelConfig: {
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.6-flash',
       },
     },
   },
@@ -312,6 +340,20 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       isPreview: true,
       isVisible: true,
       features: { thinking: false, multimodalToolUse: true },
+    },
+    'gemini-3.5-flash-lite': {
+      tier: 'flash-lite',
+      family: 'gemini-3',
+      isPreview: false,
+      isVisible: true,
+      features: { thinking: true, multimodalToolUse: true },
+    },
+    'gemini-3.6-flash': {
+      tier: 'flash',
+      family: 'gemini-3',
+      isPreview: false,
+      isVisible: true,
+      features: { thinking: true, multimodalToolUse: true },
     },
     'gemini-3.1-pro-preview': {
       tier: 'pro',
@@ -410,7 +452,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       tier: 'flash-lite',
       isPreview: false,
       isVisible: false,
-      features: { thinking: false, multimodalToolUse: false },
+      features: { thinking: true, multimodalToolUse: true },
     },
     'auto-gemini-3': {
       tier: 'auto',
@@ -454,7 +496,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       contexts: [
         {
           condition: { hasAccessToPreview: false },
-          target: 'gemini-2.5-flash',
+          target: 'gemini-3.6-flash',
         },
       ],
     },
@@ -474,6 +516,12 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
     },
     'gemini-3.5-flash': {
       default: 'gemini-3.5-flash',
+    },
+    'gemini-3.6-flash': {
+      default: 'gemini-3.6-flash',
+    },
+    'gemini-3.5-flash-lite': {
+      default: 'gemini-3.5-flash-lite',
     },
     auto: {
       default: 'gemini-3-pro-preview',
@@ -508,27 +556,15 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
       contexts: [
         {
           condition: { useGemini3_1FlashLite: false },
-          target: 'gemini-2.5-flash-lite',
+          target: 'gemini-3.5-flash-lite',
         },
       ],
     },
     flash: {
-      default: 'gemini-3-flash-preview',
-      contexts: [
-        {
-          condition: { hasAccessToPreview: false },
-          target: 'gemini-2.5-flash',
-        },
-      ],
+      default: 'gemini-3.6-flash',
     },
     'flash-lite': {
-      default: 'gemini-2.5-flash-lite',
-      contexts: [
-        {
-          condition: { useGemini3_1FlashLite: true },
-          target: 'gemini-3.1-flash-lite-preview',
-        },
-      ],
+      default: 'gemini-3.5-flash-lite',
     },
     'auto-gemini-3': {
       default: 'gemini-3-pro-preview',
@@ -550,17 +586,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
   },
   classifierIdResolutions: {
     flash: {
-      default: 'gemini-3-flash-preview',
-      contexts: [
-        {
-          condition: { hasAccessToPreview: false },
-          target: 'gemini-2.5-flash',
-        },
-        {
-          condition: { requestedModels: ['gemini-2.5-pro', 'auto-gemini-2.5'] },
-          target: 'gemini-2.5-flash',
-        },
-      ],
+      default: 'gemini-3.6-flash',
     },
     pro: {
       default: 'gemini-3-pro-preview',
@@ -602,7 +628,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         },
       },
       {
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.6-flash',
         isLastResort: true,
         maxAttempts: 10,
         actions: {
@@ -637,7 +663,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         },
       },
       {
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.6-flash',
         isLastResort: true,
         maxAttempts: 10,
         actions: {
@@ -671,7 +697,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         },
       },
       {
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         isLastResort: true,
         maxAttempts: 10,
         actions: {
@@ -706,7 +732,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         },
       },
       {
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         isLastResort: true,
         maxAttempts: 10,
         actions: {
@@ -725,7 +751,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
     ],
     lite: [
       {
-        model: 'gemini-2.5-flash-lite',
+        model: 'gemini-3.5-flash-lite',
         actions: {
           terminal: 'silent',
           transient: 'silent',
@@ -740,7 +766,7 @@ export const DEFAULT_MODEL_CONFIGS: ModelConfigServiceConfig = {
         },
       },
       {
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.6-flash',
         actions: {
           terminal: 'silent',
           transient: 'silent',

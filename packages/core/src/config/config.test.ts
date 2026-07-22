@@ -68,7 +68,6 @@ import {
   PREVIEW_GEMINI_3_1_MODEL,
   DEFAULT_GEMINI_MODEL_AUTO,
   PREVIEW_GEMINI_MODEL_AUTO,
-  PREVIEW_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_FLASH_MODEL,
 } from './models.js';
 import { Storage } from './storage.js';
@@ -1017,7 +1016,7 @@ describe('Server Config (config.ts)', () => {
       await config.getExperimentsAsync();
 
       await vi.waitFor(() => {
-        expect(config.getModel()).toBe(PREVIEW_GEMINI_FLASH_MODEL);
+        expect(config.getModel()).toBe(DEFAULT_GEMINI_FLASH_MODEL);
       });
     });
 
@@ -3244,6 +3243,40 @@ describe('Config Quota & Preview Model Access', () => {
       expect(pooled?.remaining).toBe(90);
       expect(pooled?.limit).toBe(150);
       expect((pooled?.remaining ?? 0) / (pooled?.limit ?? 1)).toBeCloseTo(0.6);
+    });
+
+    it('should pool preview auto quota with the default flash model', async () => {
+      mockCodeAssistServer.retrieveUserQuota.mockResolvedValue({
+        buckets: [
+          {
+            modelId: 'gemini-3-pro-preview',
+            remainingAmount: '12',
+            remainingFraction: 0.3,
+          },
+          {
+            modelId: DEFAULT_GEMINI_FLASH_MODEL,
+            remainingAmount: '72',
+            remainingFraction: 0.9,
+          },
+        ],
+      });
+
+      config.setModel(PREVIEW_GEMINI_MODEL_AUTO);
+      await config.refreshUserQuota();
+
+      const pooled = (
+        config as Partial<Config> as {
+          getPooledQuota: () => {
+            remaining?: number;
+            limit?: number;
+            resetTime?: string;
+          };
+        }
+      ).getPooledQuota();
+      // Pro: 12 / 0.3 = 40 total.
+      // Flash: 72 / 0.9 = 80 total.
+      expect(pooled?.remaining).toBe(84);
+      expect(pooled?.limit).toBe(120);
     });
 
     it('should return undefined pooled quota for non-auto models', async () => {

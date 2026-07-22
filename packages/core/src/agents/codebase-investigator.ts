@@ -13,8 +13,8 @@ import {
 } from '../tools/tool-names.js';
 import {
   DEFAULT_THINKING_MODE,
+  DEFAULT_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_MODEL,
-  PREVIEW_GEMINI_FLASH_MODEL,
   supportsModernFeatures,
 } from '../config/models.js';
 import { z } from 'zod';
@@ -51,10 +51,10 @@ const CodebaseInvestigationReportSchema = z.object({
 export const CodebaseInvestigatorAgent = (
   config: Config,
 ): LocalAgentDefinition<typeof CodebaseInvestigationReportSchema> => {
-  // Use Preview Flash model if the main model supports modern features.
+  // Use stable Flash model if the main model supports modern features.
   // If the main model is not a modern model, use the default pro model.
   const model = supportsModernFeatures(config.getModel())
-    ? PREVIEW_GEMINI_FLASH_MODEL
+    ? DEFAULT_GEMINI_FLASH_MODEL
     : DEFAULT_GEMINI_MODEL;
 
   const listCommand =

@@ -84,7 +84,6 @@ import {
   isAutoModel,
   isPreviewModel,
   isGemini2Model,
-  PREVIEW_GEMINI_FLASH_MODEL,
   resolveModel,
 } from './models.js';
 import { shouldAttemptBrowserLaunch } from '../utils/browser.js';
@@ -1673,7 +1672,7 @@ export class Config implements McpContext, AgentLoopContext {
     }
 
     if ((await this.getProModelNoAccess()) && isAutoModel(this.model)) {
-      this.setModel(PREVIEW_GEMINI_FLASH_MODEL);
+      this.setModel(DEFAULT_GEMINI_FLASH_MODEL);
     }
   }
 
@@ -2028,11 +2027,8 @@ export class Config implements McpContext, AgentLoopContext {
       this,
     );
 
-    const isPreview = isPreviewModel(primaryModel, this);
     const proModel = primaryModel;
-    const flashModel = isPreview
-      ? PREVIEW_GEMINI_FLASH_MODEL
-      : DEFAULT_GEMINI_FLASH_MODEL;
+    const flashModel = DEFAULT_GEMINI_FLASH_MODEL;
 
     const proQuota = this.modelQuotas.get(proModel);
     const flashQuota = this.modelQuotas.get(flashModel);

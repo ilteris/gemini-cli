@@ -14,7 +14,6 @@ import {
   DEFAULT_GEMINI_FLASH_LITE_MODEL,
   DEFAULT_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_MODEL,
-  PREVIEW_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_MODEL,
   resolveModel,
 } from '../config/models.js';
@@ -108,7 +107,7 @@ export function getModelPolicyChain(
           : {}),
       }),
       definePolicy({
-        model: PREVIEW_GEMINI_FLASH_MODEL,
+        model: DEFAULT_GEMINI_FLASH_MODEL,
         isLastResort: true,
         maxAttempts: 10,
       }),

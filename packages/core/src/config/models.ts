@@ -58,9 +58,11 @@ export const PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL =
 export const PREVIEW_GEMINI_FLASH_MODEL = 'gemini-3-flash-preview';
 export const PREVIEW_GEMINI_3_1_FLASH_LITE_MODEL =
   'gemini-3.1-flash-lite-preview';
+export const GEMINI_3_6_FLASH_MODEL = 'gemini-3.6-flash';
+export const GEMINI_3_5_FLASH_LITE_MODEL = 'gemini-3.5-flash-lite';
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-pro';
-export const DEFAULT_GEMINI_FLASH_MODEL = 'gemini-2.5-flash';
-export const DEFAULT_GEMINI_FLASH_LITE_MODEL = 'gemini-2.5-flash-lite';
+export const DEFAULT_GEMINI_FLASH_MODEL = GEMINI_3_6_FLASH_MODEL;
+export const DEFAULT_GEMINI_FLASH_LITE_MODEL = GEMINI_3_5_FLASH_LITE_MODEL;
 
 export const GEMMA_4_31B_IT_MODEL = 'gemma-4-31b-it';
 export const GEMMA_4_26B_A4B_IT_MODEL = 'gemma-4-26b-a4b-it';
@@ -71,6 +73,8 @@ export const VALID_GEMINI_MODELS = new Set([
   PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL,
   PREVIEW_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_3_1_FLASH_LITE_MODEL,
+  GEMINI_3_6_FLASH_MODEL,
+  GEMINI_3_5_FLASH_LITE_MODEL,
   DEFAULT_GEMINI_MODEL,
   DEFAULT_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_FLASH_LITE_MODEL,
@@ -104,7 +108,7 @@ export function getAutoModelDescription(
       ? 'gemini-3.1-pro'
       : 'gemini-3-pro'
     : 'gemini-2.5-pro';
-  const flashModel = hasAccessToPreview ? 'gemini-3-flash' : 'gemini-2.5-flash';
+  const flashModel = DEFAULT_GEMINI_FLASH_MODEL;
   return `Let Gemini CLI decide the best model for the task: ${proModel}, ${flashModel}`;
 }
 
@@ -180,13 +184,11 @@ export function resolveModel(
       break;
     }
     case GEMINI_MODEL_ALIAS_FLASH: {
-      resolved = PREVIEW_GEMINI_FLASH_MODEL;
+      resolved = DEFAULT_GEMINI_FLASH_MODEL;
       break;
     }
     case GEMINI_MODEL_ALIAS_FLASH_LITE: {
-      resolved = useGemini3_1FlashLite
-        ? PREVIEW_GEMINI_3_1_FLASH_LITE_MODEL
-        : DEFAULT_GEMINI_FLASH_LITE_MODEL;
+      resolved = DEFAULT_GEMINI_FLASH_LITE_MODEL;
       break;
     }
     default: {
@@ -265,9 +267,7 @@ export function resolveClassifierModel(
       requestedModel === PREVIEW_GEMINI_MODEL ||
       requestedModel === GEMINI_MODEL_ALIAS_AUTO
     ) {
-      return hasAccessToPreview
-        ? PREVIEW_GEMINI_FLASH_MODEL
-        : DEFAULT_GEMINI_FLASH_MODEL;
+      return DEFAULT_GEMINI_FLASH_MODEL;
     }
     return resolveModel(
       GEMINI_MODEL_ALIAS_FLASH,
@@ -311,7 +311,7 @@ export function getDisplayString(
     case GEMINI_MODEL_ALIAS_PRO:
       return PREVIEW_GEMINI_MODEL;
     case GEMINI_MODEL_ALIAS_FLASH:
-      return PREVIEW_GEMINI_FLASH_MODEL;
+      return DEFAULT_GEMINI_FLASH_MODEL;
     case PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL:
       return PREVIEW_GEMINI_3_1_MODEL;
     case PREVIEW_GEMINI_3_1_FLASH_LITE_MODEL:
@@ -469,12 +469,13 @@ export function supportsMultimodalFunctionResponse(
   config?: ModelCapabilityContext,
 ): boolean {
   if (config?.getExperimentalDynamicModelConfiguration?.() === true) {
+    const resolved = resolveModel(model, false, false, false, true, config);
     return (
-      config.modelConfigService.getModelDefinition(model)?.features
+      config.modelConfigService.getModelDefinition(resolved)?.features
         ?.multimodalToolUse === true
     );
   }
-  return model.startsWith('gemini-3-');
+  return isGemini3Model(model);
 }
 
 /**

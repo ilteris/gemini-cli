@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { GenerateContentConfig } from '@google/genai';
+import { ThinkingLevel, type GenerateContentConfig } from '@google/genai';
 import type { ModelPolicy } from '../availability/modelPolicy.js';
 import {
   getDisplayString,
@@ -127,16 +127,17 @@ export interface ModelConfigServiceConfig {
 
 const MAX_ALIAS_CHAIN_DEPTH = 100;
 const GEMINI_3_MODEL_PATTERN = /^gemini-3(?:[.-]|$)/;
-const SOUL_REASONING_EFFORT_VALUES = new Set([
-  'minimal',
-  'low',
-  'medium',
-  'high',
-]);
 
 type ThinkingLevelValue = NonNullable<
   NonNullable<GenerateContentConfig['thinkingConfig']>['thinkingLevel']
 >;
+
+const SOUL_REASONING_EFFORT_VALUES: Record<string, ThinkingLevelValue> = {
+  minimal: ThinkingLevel.MINIMAL,
+  low: ThinkingLevel.LOW,
+  medium: ThinkingLevel.MEDIUM,
+  high: ThinkingLevel.HIGH,
+};
 
 function isGemini3ModelName(model: string | undefined): boolean {
   return GEMINI_3_MODEL_PATTERN.test((model ?? '').toLowerCase());
@@ -144,10 +145,10 @@ function isGemini3ModelName(model: string | undefined): boolean {
 
 function getSoulReasoningEffort(): ThinkingLevelValue | undefined {
   const effort = process.env['SOUL_REASONING_EFFORT']?.trim().toLowerCase();
-  if (!effort || !SOUL_REASONING_EFFORT_VALUES.has(effort)) {
+  if (!effort) {
     return undefined;
   }
-  return effort as ThinkingLevelValue;
+  return SOUL_REASONING_EFFORT_VALUES[effort];
 }
 
 export type ResolvedModelConfig = _ResolvedModelConfig & {
@@ -438,6 +439,7 @@ export class ModelConfigService {
       );
     }
 
+    currentConfig = this.applyGemini3ApiCompatibility(currentConfig, context);
     currentConfig = this.applySoulReasoningEffort(currentConfig, context);
 
     return {
@@ -469,6 +471,39 @@ export class ModelConfigService {
           thinkingLevel,
         },
       },
+    };
+  }
+
+  private applyGemini3ApiCompatibility(
+    config: ModelConfig,
+    context: ModelConfigKey,
+  ): ModelConfig {
+    const model = config.model ?? context.model;
+    if (!isGemini3ModelName(model)) {
+      return config;
+    }
+
+    const {
+      temperature: _temperature,
+      topP: _topP,
+      topK: _topK,
+      candidateCount: _candidateCount,
+      ...rawGenerateContentConfig
+    } = config.generateContentConfig ?? {};
+    const { thinkingConfig: rawThinkingConfig, ...generateContentConfig } =
+      rawGenerateContentConfig;
+    const { thinkingBudget: _thinkingBudget, ...thinkingConfig } =
+      rawThinkingConfig ?? {};
+    const nextGenerateContentConfig: GenerateContentConfig = {
+      ...generateContentConfig,
+    };
+    if (rawThinkingConfig !== undefined || Object.keys(thinkingConfig).length) {
+      nextGenerateContentConfig.thinkingConfig = thinkingConfig;
+    }
+
+    return {
+      ...config,
+      generateContentConfig: nextGenerateContentConfig,
     };
   }
 

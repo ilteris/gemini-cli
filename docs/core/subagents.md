@@ -68,7 +68,7 @@ Gemini CLI comes with the following built-in subagents:
     "agents": {
       "overrides": {
         "codebase_investigator": {
-          "modelConfig": { "model": "gemini-3-flash-preview" },
+          "modelConfig": { "model": "gemini-3.6-flash" },
           "runConfig": { "maxTurns": 50 }
         }
       }
@@ -342,7 +342,7 @@ kind: local
 tools:
   - read_file
   - grep_search
-model: gemini-3-flash-preview
+model: gemini-3.6-flash
 temperature: 0.2
 max_turns: 10
 ---

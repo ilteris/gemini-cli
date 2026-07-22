@@ -13,7 +13,7 @@ import type { RoutingContext } from '../routingStrategy.js';
 import type { Config } from '../../config/config.js';
 import type { BaseLlmClient } from '../../core/baseLlmClient.js';
 import {
-  PREVIEW_GEMINI_FLASH_MODEL,
+  DEFAULT_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_MODEL,
   PREVIEW_GEMINI_3_1_MODEL,
   PREVIEW_GEMINI_3_1_CUSTOM_TOOLS_MODEL,
@@ -179,7 +179,7 @@ describe('NumericalClassifierStrategy', () => {
       );
 
       expect(decision).toEqual({
-        model: PREVIEW_GEMINI_FLASH_MODEL,
+        model: DEFAULT_GEMINI_FLASH_MODEL,
         metadata: {
           source: 'NumericalClassifier (Default)',
           latencyMs: expect.any(Number),
@@ -237,7 +237,7 @@ describe('NumericalClassifierStrategy', () => {
       );
 
       expect(decision).toEqual({
-        model: PREVIEW_GEMINI_FLASH_MODEL, // Score 60 < Threshold 70
+        model: DEFAULT_GEMINI_FLASH_MODEL, // Score 60 < Threshold 70
         metadata: {
           source: 'NumericalClassifier (Remote)',
           latencyMs: expect.any(Number),
@@ -267,7 +267,7 @@ describe('NumericalClassifierStrategy', () => {
       );
 
       expect(decision).toEqual({
-        model: PREVIEW_GEMINI_FLASH_MODEL, // Score 40 < Threshold 45.5
+        model: DEFAULT_GEMINI_FLASH_MODEL, // Score 40 < Threshold 45.5
         metadata: {
           source: 'NumericalClassifier (Remote)',
           latencyMs: expect.any(Number),
@@ -325,7 +325,7 @@ describe('NumericalClassifierStrategy', () => {
       );
 
       expect(decision).toEqual({
-        model: PREVIEW_GEMINI_FLASH_MODEL, // Score 80 < Default Threshold 90
+        model: DEFAULT_GEMINI_FLASH_MODEL, // Score 80 < Default Threshold 90
         metadata: {
           source: 'NumericalClassifier (Default)',
           latencyMs: expect.any(Number),
@@ -352,7 +352,7 @@ describe('NumericalClassifierStrategy', () => {
       );
 
       expect(decision).toEqual({
-        model: PREVIEW_GEMINI_FLASH_MODEL,
+        model: DEFAULT_GEMINI_FLASH_MODEL,
         metadata: {
           source: 'NumericalClassifier (Default)',
           latencyMs: expect.any(Number),

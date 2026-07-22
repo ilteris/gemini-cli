@@ -10,8 +10,8 @@ import { FakeContentGenerator } from '../core/fakeContentGenerator.js';
 import { Config } from '../config/config.js';
 import { RetryableQuotaError } from '../utils/googleQuotaErrors.js';
 import {
+  DEFAULT_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_MODEL,
-  PREVIEW_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_MODEL_AUTO,
 } from '../config/models.js';
 import fs from 'node:fs';
@@ -108,7 +108,7 @@ describe('Auto Routing Fallback Integration', () => {
             mockGoogleApiError,
             0,
           );
-        } else if (params.model === PREVIEW_GEMINI_FLASH_MODEL) {
+        } else if (params.model === DEFAULT_GEMINI_FLASH_MODEL) {
           attemptsFlash++;
           throw new RetryableQuotaError(
             'Quota exceeded for Flash',
@@ -123,7 +123,7 @@ describe('Auto Routing Fallback Integration', () => {
     // Set a fallback handler that approves the switch (simulating user or auto approval)
     config.setFallbackModelHandler(
       async (failed, _fallback, _error): Promise<FallbackIntent | null> => {
-        if (failed === PREVIEW_GEMINI_FLASH_MODEL) {
+        if (failed === DEFAULT_GEMINI_FLASH_MODEL) {
           return 'stop'; // Stop retrying after Flash fails
         }
         return 'retry_always'; // Trigger fallback to Flash
@@ -219,7 +219,7 @@ describe('Auto Routing Fallback Integration', () => {
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith(
       PREVIEW_GEMINI_MODEL,
-      PREVIEW_GEMINI_FLASH_MODEL,
+      DEFAULT_GEMINI_FLASH_MODEL,
       expect.any(RetryableQuotaError),
     );
   });
@@ -268,7 +268,7 @@ describe('Auto Routing Fallback Integration', () => {
             mockGoogleApiError,
             0,
           );
-        } else if (params.model === PREVIEW_GEMINI_FLASH_MODEL) {
+        } else if (params.model === DEFAULT_GEMINI_FLASH_MODEL) {
           attemptsFlash++;
           throw new RetryableQuotaError(
             'Quota exceeded for Flash',
@@ -283,7 +283,7 @@ describe('Auto Routing Fallback Integration', () => {
     // Set a fallback handler that approves the switch
     configDynamic.setFallbackModelHandler(
       async (failed, _fallback, _error): Promise<FallbackIntent | null> => {
-        if (failed === PREVIEW_GEMINI_FLASH_MODEL) {
+        if (failed === DEFAULT_GEMINI_FLASH_MODEL) {
           return 'stop';
         }
         return 'retry_always';
@@ -346,7 +346,7 @@ describe('Auto Routing Fallback Integration', () => {
             mockGoogleApiError,
             0,
           );
-        } else if (params.model === PREVIEW_GEMINI_FLASH_MODEL) {
+        } else if (params.model === DEFAULT_GEMINI_FLASH_MODEL) {
           attemptsFlash++;
           return {
             candidates: [

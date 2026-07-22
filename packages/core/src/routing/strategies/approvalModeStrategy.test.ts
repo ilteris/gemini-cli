@@ -12,7 +12,6 @@ import {
   DEFAULT_GEMINI_MODEL,
   DEFAULT_GEMINI_FLASH_MODEL,
   PREVIEW_GEMINI_MODEL,
-  PREVIEW_GEMINI_FLASH_MODEL,
   DEFAULT_GEMINI_MODEL_AUTO,
   PREVIEW_GEMINI_MODEL_AUTO,
   GEMINI_MODEL_ALIAS_AUTO,
@@ -161,7 +160,7 @@ describe('ApprovalModeStrategy', () => {
     );
 
     expect(decision).toEqual({
-      model: PREVIEW_GEMINI_FLASH_MODEL,
+      model: DEFAULT_GEMINI_FLASH_MODEL,
       metadata: {
         source: 'approval-mode',
         latencyMs: expect.any(Number),
@@ -221,10 +220,10 @@ describe('ApprovalModeStrategy', () => {
       mockBaseLlmClient,
     );
 
-    expect(implementationDecision?.model).toBe(PREVIEW_GEMINI_FLASH_MODEL);
+    expect(implementationDecision?.model).toBe(DEFAULT_GEMINI_FLASH_MODEL);
   });
 
-  it('should route to Preview Flash model when an approved plan exists and Gemini 3.1 is launched', async () => {
+  it('should route to default Flash model when an approved plan exists and Gemini 3.1 is launched', async () => {
     vi.mocked(mockConfig.getModel).mockReturnValue(GEMINI_MODEL_ALIAS_AUTO);
     vi.mocked(mockConfig.getGemini31Launched).mockResolvedValue(true);
 
@@ -240,7 +239,6 @@ describe('ApprovalModeStrategy', () => {
       mockBaseLlmClient,
     );
 
-    // Should resolve to Preview Flash (3.0) because resolveClassifierModel uses preview variants for Gemini 3
-    expect(decision?.model).toBe(PREVIEW_GEMINI_FLASH_MODEL);
+    expect(decision?.model).toBe(DEFAULT_GEMINI_FLASH_MODEL);
   });
 });

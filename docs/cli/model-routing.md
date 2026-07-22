@@ -18,9 +18,8 @@ policies.
     you).
 
     Some internal utility calls (such as prompt completion and classification)
-    use a silent fallback chain for `gemini-2.5-flash-lite` and will fall back
-    to `gemini-2.5-flash` and `gemini-2.5-pro` without prompting or changing the
-    configured model.
+    use `gemini-3.6-flash` by default and can silently use the next compatible
+    fallback without prompting or changing the configured model.
 
 3.  **Model switch:** If approved, or if the policy allows for silent fallback,
     the CLI will use an available fallback model for the current turn or the
